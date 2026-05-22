@@ -130,7 +130,7 @@ export const Chat: React.FC = () => {
 
   // Get subject icon
   const getSubjectIcon = (subjectName: string) => {
-    const icons: Record<string, JSX.Element> = {
+    const icons: Record<string, React.ReactElement> = {
       'Mathematics': <Calculator className="w-3.5 h-3.5" />,
       'Physics': <Atom className="w-3.5 h-3.5" />,
       'Chemistry': <Zap className="w-3.5 h-3.5" />,

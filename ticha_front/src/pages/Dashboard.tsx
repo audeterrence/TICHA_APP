@@ -51,7 +51,7 @@ interface Task {
 interface AITip {
   title: string;
   message: string;
-  icon: JSX.Element;
+  icon: React.ReactElement;
 }
 
 export const Dashboard: React.FC = () => {
