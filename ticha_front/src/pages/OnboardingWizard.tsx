@@ -3,40 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
 import { 
-  ArrowRight, 
-  ArrowLeft, 
-  BookOpen, 
-  Beaker, 
-  Palette, 
-  CheckCircle2, 
-  Sparkles,
-  Star,
-  GraduationCap,
-  Brain,
-  TrendingUp,
-  Award,
-  ChevronRight,
-  Zap,
-  Library,
-  Rocket,
-  AlertCircle,
-  Calculator,
-  Atom,
-  Globe,
-  Feather,
-  Heart,
-  Landmark,
-  Languages,
-  Microscope,
-  Dna,
-  Cpu,
-  DollarSign,
-  Users
+  ArrowRight, ArrowLeft, BookOpen, Beaker, Palette, CheckCircle2, 
+  Sparkles, Star, GraduationCap, Brain, TrendingUp, Award,
+  ChevronRight, Zap, Library, Rocket, AlertCircle,
+  Calculator, Atom, Globe, Feather, Heart, Landmark, Languages,
+  Microscope, Dna, Cpu, DollarSign, Users
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-// Cameroon GCE Curriculum Subjects
-const subjectOptions = {
+interface Subject {
+  id: string;
+  name: string;
+  code: string;
+  icon: string;
+  color: string;
+  topics: number;
+}
+
+const subjectOptions: Record<string, any> = {
   'GCE O-Level': {
     science: [
       { id: 'math-o', name: 'Mathematics', code: 'MATH', icon: 'Calculator', color: 'from-blue-500 to-cyan-500', topics: 24 },
@@ -44,17 +28,13 @@ const subjectOptions = {
       { id: 'physics-o', name: 'Physics', code: 'PHY', icon: 'Atom', color: 'from-indigo-500 to-blue-500', topics: 18 },
       { id: 'chemistry-o', name: 'Chemistry', code: 'CHEM', icon: 'Microscope', color: 'from-emerald-500 to-teal-500', topics: 20 },
       { id: 'biology-o', name: 'Biology', code: 'BIO', icon: 'Dna', color: 'from-green-500 to-emerald-500', topics: 22 },
-      { id: 'additional-math', name: 'Additional Mathematics', code: 'ADD MATH', icon: 'Calculator', color: 'from-cyan-500 to-blue-500', topics: 20 },
-      { id: 'food-nutrition', name: 'Food & Nutrition', code: 'FN', icon: 'Heart', color: 'from-orange-500 to-red-500', topics: 16 },
     ],
     arts: [
       { id: 'english-o', name: 'English Language', code: 'ENG', icon: 'BookOpen', color: 'from-rose-500 to-pink-500', topics: 15 },
-      { id: 'lit-o', name: 'Literature in English', code: 'LIT', icon: 'Feather', color: 'from-amber-500 to-orange-500', topics: 20 },
+      { id: 'lit-o', name: 'Literature', code: 'LIT', icon: 'Feather', color: 'from-amber-500 to-orange-500', topics: 20 },
       { id: 'history-o', name: 'History', code: 'HIST', icon: 'Landmark', color: 'from-slate-500 to-gray-500', topics: 18 },
       { id: 'geography-o', name: 'Geography', code: 'GEOG', icon: 'Globe', color: 'from-teal-500 to-emerald-500', topics: 19 },
       { id: 'economics-o', name: 'Economics', code: 'ECO', icon: 'DollarSign', color: 'from-cyan-500 to-blue-500', topics: 17 },
-      { id: 'french-o', name: 'French', code: 'FR', icon: 'Languages', color: 'from-purple-500 to-violet-500', topics: 16 },
-      { id: 'religious-studies', name: 'Religious Studies', code: 'RS', icon: 'BookOpen', color: 'from-yellow-500 to-amber-500', topics: 14 },
     ]
   },
   'GCE A-Level': {
@@ -63,17 +43,12 @@ const subjectOptions = {
       { id: 'physics-a', name: 'Physics', code: 'PHY', icon: 'Atom', color: 'from-indigo-500 to-blue-500', topics: 28 },
       { id: 'chemistry-a', name: 'Chemistry', code: 'CHEM', icon: 'Microscope', color: 'from-emerald-500 to-teal-500', topics: 26 },
       { id: 'biology-a', name: 'Biology', code: 'BIO', icon: 'Dna', color: 'from-green-500 to-emerald-500', topics: 30 },
-      { id: 'comp-sci', name: 'Computer Science', code: 'CS', icon: 'Cpu', color: 'from-slate-500 to-gray-500', topics: 24 },
-      { id: 'further-math', name: 'Further Mathematics', code: 'FMATH', icon: 'Calculator', color: 'from-blue-600 to-cyan-600', topics: 28 },
     ],
     arts: [
-      { id: 'lit-a', name: 'Literature in English', code: 'LIT', icon: 'Feather', color: 'from-amber-500 to-orange-500', topics: 28 },
+      { id: 'lit-a', name: 'Literature', code: 'LIT', icon: 'Feather', color: 'from-amber-500 to-orange-500', topics: 28 },
       { id: 'history-a', name: 'History', code: 'HIST', icon: 'Landmark', color: 'from-slate-500 to-gray-500', topics: 26 },
       { id: 'geography-a', name: 'Geography', code: 'GEOG', icon: 'Globe', color: 'from-teal-500 to-emerald-500', topics: 24 },
       { id: 'economics-a', name: 'Economics', code: 'ECO', icon: 'DollarSign', color: 'from-cyan-500 to-blue-500', topics: 26 },
-      { id: 'french-a', name: 'French', code: 'FR', icon: 'Languages', color: 'from-purple-500 to-violet-500', topics: 22 },
-      { id: 'sociology', name: 'Sociology', code: 'SOC', icon: 'Users', color: 'from-violet-500 to-purple-500', topics: 22 },
-      { id: 'philosophy', name: 'Philosophy', code: 'PHIL', icon: 'Brain', color: 'from-indigo-500 to-purple-500', topics: 20 },
     ]
   }
 };
@@ -98,17 +73,17 @@ const iconMap: Record<string, any> = {
 export const OnboardingWizard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [step, setStep] = useState('welcome');
-  const [stream, setStream] = useState(null);
-  const [selectedSubjects, setSelectedSubjects] = useState([]);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState<'welcome' | 'stream' | 'subjects'>('welcome');
+  const [stream, setStream] = useState<'science' | 'arts' | null>(null);
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [error, setError] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
 
   const userLevel = user?.level || 'GCE A-Level';
   const userId = user?.id;
   
-  const currentSubjects = stream ? subjectOptions[userLevel]?.[stream] || [] : [];
-  const minSubjects = userLevel === 'GCE A-Level' ? 3 : 6;
+  const currentSubjects: Subject[] = stream ? subjectOptions[userLevel]?.[stream] || [] : [];
+  const minSubjects: number = userLevel === 'GCE A-Level' ? 3 : 5;
 
   useEffect(() => {
     if (!userId) {
@@ -124,29 +99,29 @@ export const OnboardingWizard: React.FC = () => {
     }
   }, [userId, navigate]);
 
-  const handleStreamSelect = (selectedStream) => {
+  const handleStreamSelect = (selectedStream: 'science' | 'arts'): void => {
     setStream(selectedStream);
     setSelectedSubjects([]);
     setStep('subjects');
   };
 
-  const handleSubjectToggle = (subjectId) => {
-    setSelectedSubjects(prev => 
+  const handleSubjectToggle = (subjectId: string): void => {
+    setSelectedSubjects((prev: string[]) => 
       prev.includes(subjectId) 
-        ? prev.filter(id => id !== subjectId)
+        ? prev.filter((id: string) => id !== subjectId)
         : [...prev, subjectId]
     );
     setError('');
   };
 
-  const handleFinish = () => {
+  const handleFinish = (): void => {
     if (selectedSubjects.length < minSubjects) {
       setError(`Please select at least ${minSubjects} subjects to continue`);
       return;
     }
 
-    const fullSubjects = currentSubjects.filter(s => selectedSubjects.includes(s.id));
-    const subjectsWithProgress = fullSubjects.map(subject => ({
+    const fullSubjects: Subject[] = currentSubjects.filter((s: Subject) => selectedSubjects.includes(s.id));
+    const subjectsWithProgress = fullSubjects.map((subject: Subject) => ({
       id: subject.id,
       name: subject.name,
       code: subject.code,
@@ -157,14 +132,16 @@ export const OnboardingWizard: React.FC = () => {
       color: subject.color
     }));
 
-    localStorage.setItem(`ticha_user_subjects_${userId}`, JSON.stringify(subjectsWithProgress));
-    localStorage.setItem(`ticha_user_stream_${userId}`, stream);
-    localStorage.setItem(`ticha_onboarding_complete_${userId}`, 'true');
+    if (userId) {
+      localStorage.setItem(`ticha_user_subjects_${userId}`, JSON.stringify(subjectsWithProgress));
+      localStorage.setItem(`ticha_user_stream_${userId}`, stream as string);
+      localStorage.setItem(`ticha_onboarding_complete_${userId}`, 'true');
+    }
     
     navigate('/dashboard');
   };
 
-  const renderSubjectCard = (subject) => {
+  const renderSubjectCard = (subject: Subject): React.ReactElement => {
     const IconComponent = iconMap[subject.icon] || BookOpen;
     const isSelected = selectedSubjects.includes(subject.id);
     
@@ -261,7 +238,7 @@ export const OnboardingWizard: React.FC = () => {
                 <Beaker className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-2xl font-bold text-white mb-2">Science</h3>
-              <p className="text-white/60 text-sm">Mathematics, Physics, Chemistry, Biology, Computer Science</p>
+              <p className="text-white/60 text-sm">Mathematics, Physics, Chemistry, Biology</p>
             </button>
 
             <button
@@ -272,7 +249,7 @@ export const OnboardingWizard: React.FC = () => {
                 <Palette className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-2xl font-bold text-white mb-2">Arts</h3>
-              <p className="text-white/60 text-sm">Literature, History, Geography, Economics, French</p>
+              <p className="text-white/60 text-sm">Literature, History, Geography, Economics</p>
             </button>
           </div>
 
@@ -313,13 +290,13 @@ export const OnboardingWizard: React.FC = () => {
             <div className="w-full bg-white/10 rounded-full h-1.5">
               <div 
                 className="bg-gradient-to-r from-tichaBlue to-tichaPurple h-1.5 rounded-full transition-all"
-                style={{ width: `${(selectedSubjects.length / minSubjects) * 100}%` }}
+                style={{ width: `${Math.min((selectedSubjects.length / minSubjects) * 100, 100)}%` }}
               />
             </div>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
-            {currentSubjects.map(renderSubjectCard)}
+            {currentSubjects.map((subject: Subject) => renderSubjectCard(subject))}
           </div>
 
           {error && (
