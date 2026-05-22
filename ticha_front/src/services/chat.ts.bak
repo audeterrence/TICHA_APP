@@ -1,0 +1,71 @@
+import api, { mockData, safeApiCall } from './api';
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  subject: string;
+  date: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export const getChatSessions = async (): Promise<ChatSession[]> => {
+  return safeApiCall<ChatSession[]>(
+    api.get('/api/chat/sessions'),
+    mockData.chatSessions,
+    'Retrieving chat history sessions list'
+  );
+};
+
+export const createChatSession = async (subject: string, title?: string): Promise<ChatSession> => {
+  const newSession: ChatSession = {
+    id: `session_${Math.random().toString(36).substr(2, 9)}`,
+    title: title || `Tutor: ${subject} Guidance`,
+    subject,
+    date: 'Just now',
+  };
+
+  return safeApiCall<ChatSession>(
+    api.post('/api/chat/sessions', { subject, title }),
+    newSession,
+    'Creating new chat tutor session'
+  );
+};
+
+export const getChatMessages = async (sessionId: string): Promise<ChatMessage[]> => {
+  const fallback: ChatMessage[] = (mockData.chatMessages[sessionId as keyof typeof mockData.chatMessages] as ChatMessage[]) ?? ([
+    { id: 'm_init', role: 'assistant' as const, content: "Welcome! Feel free to ask me anything about your syllabus." }
+  ] as ChatMessage[]);
+
+  return safeApiCall<ChatMessage[]>(
+    api.get(`/api/chat/messages?session_id=${sessionId}`),
+    fallback,
+    `Loading messages for session: ${sessionId}`
+  );
+};
+
+export const sendChatMessage = async (sessionId: string, content: string): Promise<ChatMessage> => {
+  // Generate intelligent mock response based on contents
+  let reply = "I've analyzed your question! Let me check the GCE syllabus and explain. Can you clarify which part is confusing?";
+  if (content.toLowerCase().includes('chain rule') || content.toLowerCase().includes('calculus')) {
+    reply = "The **Chain Rule** allows you to differentiate compound functions: $f(g(x))' = f'(g(x)) \\cdot g'(x)$. Practice with a function like $(3x+2)^2$!";
+  } else if (content.toLowerCase().includes('force') || content.toLowerCase().includes('newton')) {
+    reply = "Newton's Second Law states that force equals mass times acceleration: $F = m \\cdot a$. This means an object accelerates proportional to the net force applied!";
+  }
+
+  const newReply: ChatMessage = {
+    id: `msg_ai_${Math.random().toString(36).substr(2, 9)}`,
+    role: 'assistant',
+    content: reply,
+  };
+
+  return safeApiCall<ChatMessage>(
+    api.post('/api/chat/messages', { session_id: sessionId, content }),
+    newReply,
+    'Sending message to AI Tutor (local mockup reply)'
+  );
+};
