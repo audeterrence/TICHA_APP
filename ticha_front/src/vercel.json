@@ -1,0 +1,17 @@
+{
+  "builds": [
+    {
+      "src": "ticha_front/**",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "ticha_front/dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/ticha_front/index.html"
+    }
+  ]
+}
