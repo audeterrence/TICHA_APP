@@ -6,7 +6,7 @@ import {
   BookOpen, BrainCircuit, Users, Star, ChevronDown, Zap,
   Calculator, Atom, Globe, Heart, Coffee, CheckCircle2
 } from "lucide-react";
-import TichaLogo from "../assets/Ticha-Logo.jpg";
+import TichaLogo from "../assets/ticha-logo.jpg";
 
 // Tilt Card Component
 const TiltCard: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => {
