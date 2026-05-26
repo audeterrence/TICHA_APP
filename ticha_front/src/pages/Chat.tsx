@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { MessageSquare, Send, Sparkles, Plus, X, Brain, Target, BookOpen, GraduationCap, Atom, Calculator, Globe, Feather, Zap } from "lucide-react";
+import { MessageSquare, Send, Sparkles, Plus, X, Brain, Target, BookOpen, GraduationCap, Atom, Calculator, Globe, Feather, Zap, Menu } from "lucide-react";
 import { useChat } from "../hooks/useChat";
 import { Button } from "../components/common/Button";
 import { useAuth } from "../context/AuthContext";
@@ -24,7 +24,22 @@ export const Chat: React.FC = () => {
   const userId = user?.id;
   const userLevel = user?.level || 'GCE A-Level';
 
-  // Load user's subjects and stream from localStorage
+  // Handle responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setShowSidebar(false);
+      } else {
+        setShowSidebar(true);
+      }
+    };
+    
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Load user's subjects
   useEffect(() => {
     if (userId) {
       const subjectsKey = `ticha_user_subjects_${userId}`;
@@ -45,7 +60,6 @@ export const Chat: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
 
-  // Generate contextual system prompt based on user's level, stream, and subjects
   const getContextualSystemPrompt = () => {
     const streamName = userStream === 'science' ? 'Science' : 'Arts';
     const subjectsList = userSubjects.map(s => s.name).join(', ');
@@ -68,110 +82,140 @@ export const Chat: React.FC = () => {
     e.preventDefault();
     if (!input.trim() || sending) return;
     
-    // Add contextual info to the message if needed
-    let messageToSend = input.trim();
-    
-    // If first message in session, add context about the user
     if (messages.length === 0) {
       const contextPrompt = getContextualSystemPrompt();
-      // Store the system prompt in sessionStorage for the chat hook to use
       sessionStorage.setItem('ticha_chat_context', contextPrompt);
     }
     
-    sendMessage(messageToSend);
+    sendMessage(input.trim());
     setInput("");
   };
 
   const handleNewSession = () => {
     const streamName = userStream === 'science' ? 'Science' : 'Arts';
     startSession(userSubjects[0]?.name || "General", `${userLevel} ${streamName} Tutor`);
+    if (window.innerWidth < 768) setShowSidebar(false);
   };
 
-  // Generate personalized suggested prompts based on user's subjects and level
+  const handleSelectSession = (session: any) => {
+    setActiveSession(session);
+    if (window.innerWidth < 768) setShowSidebar(false);
+  };
+
   const getPersonalizedPrompts = () => {
     const prompts = [];
     
     if (userSubjects.length > 0) {
       const firstSubject = userSubjects[0];
       if (firstSubject.name === 'Mathematics') {
-        prompts.push("Explain the chain rule with examples");
-        prompts.push("How to solve quadratic equations step by step");
+        prompts.push("Explain the chain rule");
+        prompts.push("Solve quadratic equations");
       } else if (firstSubject.name === 'Physics') {
-        prompts.push("Explain Newton's laws of motion");
+        prompts.push("Explain Newton's laws");
         prompts.push("How does electricity work?");
       } else if (firstSubject.name === 'Chemistry') {
-        prompts.push("Explain the periodic table trends");
-        prompts.push("How to balance chemical equations");
+        prompts.push("Periodic table trends");
+        prompts.push("Balance equations");
       } else if (firstSubject.name === 'Biology') {
-        prompts.push("Explain the process of photosynthesis");
-        prompts.push("How does the human digestive system work?");
+        prompts.push("Explain photosynthesis");
+        prompts.push("Human digestive system");
       } else if (firstSubject.name === 'Literature') {
-        prompts.push("How to analyze a poem effectively");
-        prompts.push("What are the key literary devices?");
+        prompts.push("Analyze a poem");
+        prompts.push("Key literary devices");
       } else if (firstSubject.name === 'History') {
-        prompts.push("Summarize Cameroon's independence history");
-        prompts.push("What caused World War I?");
+        prompts.push("Cameroon independence");
+        prompts.push("Causes of WWI");
       } else if (firstSubject.name === 'Geography') {
-        prompts.push("Explain plate tectonics");
-        prompts.push("What are the types of climate zones?");
+        prompts.push("Plate tectonics");
+        prompts.push("Climate zones");
       } else {
-        prompts.push(`Explain key concepts in ${firstSubject.name}`);
-        prompts.push(`How to prepare for ${userLevel} ${firstSubject.name} exam`);
+        prompts.push(`Key concepts in ${firstSubject.name}`);
+        prompts.push(`${userLevel} exam prep tips`);
       }
     }
     
-    prompts.push("Give me study tips for exams");
-    prompts.push("How can I improve my concentration?");
+    prompts.push("Study tips for exams");
+    prompts.push("How to improve concentration?");
     
     return prompts.slice(0, 4);
   };
 
   const personalizedPrompts = getPersonalizedPrompts();
 
-  // Get subject icon
   const getSubjectIcon = (subjectName: string) => {
     const icons: Record<string, React.ReactElement> = {
-      'Mathematics': <Calculator className="w-3.5 h-3.5" />,
-      'Physics': <Atom className="w-3.5 h-3.5" />,
-      'Chemistry': <Zap className="w-3.5 h-3.5" />,
-      'Biology': <Brain className="w-3.5 h-3.5" />,
-      'Geography': <Globe className="w-3.5 h-3.5" />,
-      'Literature': <Feather className="w-3.5 h-3.5" />,
-      'History': <BookOpen className="w-3.5 h-3.5" />,
+      'Mathematics': <Calculator className="w-3 h-3" />,
+      'Physics': <Atom className="w-3 h-3" />,
+      'Chemistry': <Zap className="w-3 h-3" />,
+      'Biology': <Brain className="w-3 h-3" />,
+      'Geography': <Globe className="w-3 h-3" />,
+      'Literature': <Feather className="w-3 h-3" />,
+      'History': <BookOpen className="w-3 h-3" />,
     };
-    return icons[subjectName] || <Target className="w-3.5 h-3.5" />;
+    return icons[subjectName] || <Target className="w-3 h-3" />;
   };
 
   const streamName = userStream === 'science' ? 'Science' : 'Arts';
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-sm">
+    <div className="h-[calc(100vh-8rem)] flex flex-col md:flex-row border border-slate-200 rounded-2xl bg-white overflow-hidden shadow-sm relative">
+      
+      {/* Mobile Sidebar Overlay */}
+      {showSidebar && isMobile && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-20 md:hidden"
+          onClick={() => setShowSidebar(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`${showSidebar ? "w-full sm:w-80" : "w-0"} border-r border-slate-100 flex flex-col h-full bg-slate-50 shrink-0 transition-all duration-300 overflow-hidden ${showSidebar ? "min-w-[200px]" : "min-w-0"}`}>
+      <aside 
+        className={`
+          ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
+          md:translate-x-0 md:relative md:w-80
+          fixed md:static top-0 left-0 z-30
+          w-72 h-full
+          border-r border-slate-100 flex flex-col bg-slate-50
+          transition-transform duration-300 ease-in-out
+          shadow-xl md:shadow-none
+        `}
+      >
         <div className="p-4 border-b border-slate-100">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-ticha-gray uppercase tracking-wider">AI Sessions</span>
-            <button onClick={handleNewSession} className="p-1.5 rounded-lg hover:bg-slate-200 border border-slate-200 bg-white text-ticha-blue cursor-pointer transition-all">
-              <Plus className="w-4 h-4" />
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={handleNewSession} 
+                className="p-1.5 rounded-lg hover:bg-slate-200 border border-slate-200 bg-white text-ticha-blue cursor-pointer transition-all"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setShowSidebar(false)} 
+                                className="md:hidden p-1.5 rounded-lg hover:bg-slate-200 border border-slate-200 bg-white text-slate-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           
           {/* User Context Card */}
-          <div className="bg-gradient-to-r from-tichaBlue/10 to-tichaPurple/10 rounded-xl p-3 mb-2">
-            <div className="flex items-center gap-2 mb-2">
-              <GraduationCap className="w-4 h-4 text-tichaBlue" />
+          <div className="bg-gradient-to-r from-tichaBlue/10 to-tichaPurple/10 rounded-xl p-3">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <GraduationCap className="w-4 h-4 text-tichaBlue shrink-0" />
               <span className="text-xs font-bold text-slate-700">{userLevel}</span>
-              <span className="text-xs text-slate-500">{streamName} Stream</span>
+              <span className="text-xs text-slate-500">{streamName}</span>
             </div>
             <div className="flex flex-wrap gap-1">
               {userSubjects.slice(0, 3).map(subject => (
-                <span key={subject.id} className="inline-flex items-center gap-1 text-[9px] bg-white/80 px-1.5 py-0.5 rounded-full text-slate-600">
+                <span key={subject.id} className="inline-flex items-center gap-1 text-[10px] bg-white/80 px-2 py-0.5 rounded-full text-slate-600">
                   {getSubjectIcon(subject.name)}
-                  {subject.name}
+                  <span className="max-w-[70px] truncate">{subject.name}</span>
                 </span>
               ))}
               {userSubjects.length > 3 && (
-                <span className="text-[9px] text-slate-400">+{userSubjects.length - 3} more</span>
+                <span className="text-[10px] text-slate-400">+{userSubjects.length - 3}</span>
               )}
             </div>
           </div>
@@ -189,11 +233,14 @@ export const Chat: React.FC = () => {
             sessions.map((sess) => {
               const isActive = activeSession?.id === sess.id;
               return (
-                <div key={sess.id} onClick={() => setActiveSession(sess)}
-                  className={`p-3 rounded-xl text-left cursor-pointer transition-all border text-xs ${isActive ? "bg-ticha-blue/5 border-ticha-blue/30 text-ticha-blue font-bold" : "border-transparent text-slate-500 hover:bg-slate-100/50"}`}>
+                <div 
+                  key={sess.id} 
+                  onClick={() => handleSelectSession(sess)}
+                  className={`p-3 rounded-xl text-left cursor-pointer transition-all border text-xs ${isActive ? "bg-ticha-blue/5 border-ticha-blue/30 text-ticha-blue font-bold" : "border-transparent text-slate-500 hover:bg-slate-100/50"}`}
+                >
                   <div className="flex items-center gap-2 mb-1">
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span className="text-[10px] font-bold uppercase bg-slate-100 px-1.5 py-0.5 rounded text-slate-400">{sess.subject}</span>
+                    <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                    <span className="text-[10px] font-bold uppercase bg-slate-100 px-1.5 py-0.5 rounded text-slate-400 truncate max-w-[100px]">{sess.subject}</span>
                   </div>
                   <h4 className="font-medium truncate">{sess.title}</h4>
                   <span className="text-[9px] text-slate-400">{sess.date}</span>
@@ -205,41 +252,44 @@ export const Chat: React.FC = () => {
       </aside>
 
       {/* Main Chat Area */}
-      <section className="flex-1 flex flex-col h-full bg-white relative overflow-hidden">
+      <section className="flex-1 flex flex-col h-full bg-white overflow-hidden">
         {/* Header */}
-        <div className="h-14 border-b border-slate-100 px-4 flex items-center justify-between shrink-0 bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowSidebar(!showSidebar)} className="sm:hidden p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 cursor-pointer">
-              {showSidebar ? <X className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+        <div className="h-14 border-b border-slate-100 px-3 sm:px-4 flex items-center justify-between shrink-0 bg-slate-50/50">
+          <div className="flex items-center gap-2 min-w-0">
+            <button 
+              onClick={() => setShowSidebar(true)} 
+              className="md:hidden p-2 -ml-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+            >
+              <Menu className="w-5 h-5" />
             </button>
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-ticha-blue to-ticha-purple flex items-center justify-center text-white text-xs font-bold shadow-sm">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-ticha-blue to-ticha-purple flex items-center justify-center text-white shadow-sm shrink-0">
               <Brain className="w-4 h-4" />
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-ticha-dark">Ticha AI Tutor</h3>
-              <p className="text-[10px] text-ticha-gray">
-                {activeSession?.subject || userSubjects[0]?.name || "General"} • {userLevel} {streamName}
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-ticha-dark truncate">Ticha AI Tutor</h3>
+              <p className="text-[10px] text-ticha-gray truncate">
+                {activeSession?.subject || userSubjects[0]?.name || "General"} • {userLevel}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-ticha-green/10 rounded-full">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-ticha-green/10 rounded-full shrink-0">
             <span className="w-2 h-2 bg-ticha-green rounded-full animate-pulse" />
-            <span className="text-[10px] font-bold text-ticha-green">AI Online</span>
+            <span className="text-[10px] font-bold text-ticha-green hidden xs:inline">AI Online</span>
           </div>
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4">
           {!activeSession ? (
-            <div className="flex flex-col items-center justify-center h-full text-center py-8">
+            <div className="flex flex-col items-center justify-center h-full text-center py-8 px-4">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-ticha-blue to-ticha-purple flex items-center justify-center text-white mb-4 shadow-lg">
                 <Sparkles className="w-6 h-6" />
               </div>
-              <h3 className="font-bold text-ticha-dark text-lg mb-2">Ready to learn, {user?.name?.split(' ')[0]}?</h3>
-              <p className="text-sm text-slate-500 mb-4 max-w-xs">
-                I'm your personal AI tutor for {userLevel} {streamName}. Ask me anything about {userSubjects[0]?.name || 'your subjects'}!
+              <h3 className="font-bold text-ticha-dark text-base sm:text-lg mb-2">Ready to learn?</h3>
+              <p className="text-xs sm:text-sm text-slate-500 mb-4 max-w-xs">
+                I'm your personal AI tutor for {userLevel} {streamName}. Ask me anything!
               </p>
-              <button onClick={handleNewSession} className="px-5 py-2.5 bg-gradient-to-r from-ticha-blue to-ticha-purple text-white font-semibold rounded-lg hover:opacity-90 transition-opacity shadow-md cursor-pointer">
+              <button onClick={handleNewSession} className="px-4 sm:px-5 py-2.5 bg-gradient-to-r from-ticha-blue to-ticha-purple text-white font-semibold rounded-lg text-sm shadow-md">
                 Start New Session
               </button>
             </div>
@@ -251,13 +301,13 @@ export const Chat: React.FC = () => {
                     <Sparkles className="w-3 h-3" />
                     Personalized for you
                   </div>
-                  <h4 className="font-bold text-ticha-dark text-sm mb-3">Based on your {userLevel} {streamName} curriculum:</h4>
-                  <div className="flex flex-wrap gap-2 justify-center max-w-2xl">
+                  <h4 className="font-bold text-ticha-dark text-sm mb-3">Try these prompts:</h4>
+                  <div className="flex flex-wrap gap-2 justify-center">
                     {personalizedPrompts.map((prompt, idx) => (
                       <button
                         key={idx}
                         onClick={() => setInput(prompt)}
-                        className="px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-xl hover:border-tichaBlue hover:bg-tichaBlue/5 transition-all cursor-pointer shadow-sm"
+                        className="px-3 py-1.5 text-xs sm:text-sm bg-white border border-slate-200 text-slate-700 rounded-xl hover:border-tichaBlue hover:bg-tichaBlue/5 transition-all shadow-sm"
                       >
                         {prompt}
                       </button>
@@ -269,27 +319,27 @@ export const Chat: React.FC = () => {
               {messages.map((msg) => {
                 const isUser = msg.role === "user";
                 return (
-                  <div key={msg.id} className={`flex gap-2.5 max-w-[90%] sm:max-w-[80%] ${isUser ? "ml-auto flex-row-reverse text-right" : "mr-auto text-left"}`}>
+                  <div key={msg.id} className={`flex gap-2 max-w-[85%] sm:max-w-[75%] ${isUser ? "ml-auto flex-row-reverse" : "mr-auto"}`}>
                     <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold shadow-sm ${isUser ? "bg-slate-800 text-white" : "bg-gradient-to-br from-ticha-blue to-ticha-purple text-white"}`}>
-                      {isUser ? "Y" : <Brain className="w-3.5 h-3.5" />}
+                      {isUser ? "U" : <Brain className="w-3.5 h-3.5" />}
                     </div>
-                    <div className={`p-3 rounded-xl text-sm leading-relaxed ${isUser ? "bg-slate-800 text-white rounded-tr-none" : "bg-slate-50 border border-slate-200 rounded-tl-none"}`}>
-                      <p className="whitespace-pre-line">{msg.content}</p>
+                    <div className={`p-3 rounded-xl text-sm leading-relaxed break-words ${isUser ? "bg-slate-800 text-white rounded-tr-none" : "bg-slate-50 border border-slate-200 rounded-tl-none"}`}>
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
                     </div>
                   </div>
                 );
               })}
               
               {sending && (
-                <div className="flex gap-2.5 max-w-[85%] mr-auto">
-                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-ticha-blue to-ticha-purple text-white flex items-center justify-center">
+                <div className="flex gap-2 max-w-[75%] mr-auto">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-ticha-blue to-ticha-purple text-white flex items-center justify-center shrink-0">
                     <Brain className="w-3.5 h-3.5" />
                   </div>
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl rounded-tl-none flex items-center gap-1">
                     <span className="w-1.5 h-1.5 bg-ticha-blue rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                     <span className="w-1.5 h-1.5 bg-ticha-blue rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                     <span className="w-1.5 h-1.5 bg-ticha-blue rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                    <span className="text-xs text-slate-400 ml-1">Thinking...</span>
+                    <span className="text-xs text-slate-400 ml-1 hidden xs:inline">Thinking...</span>
                   </div>
                 </div>
               )}
@@ -305,21 +355,18 @@ export const Chat: React.FC = () => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={`Ask me about ${userSubjects[0]?.name || 'your subjects'}...`}
+              placeholder="Ask me anything..."
               disabled={sending}
-              className="flex-1 bg-slate-50 border border-slate-200 text-ticha-dark rounded-xl px-3 sm:px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ticha-blue/30 focus:border-ticha-blue placeholder-slate-400 disabled:opacity-60"
+              className="flex-1 bg-slate-50 border border-slate-200 text-ticha-dark rounded-xl px-3 sm:px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ticha-blue/30 placeholder-slate-400 disabled:opacity-60"
             />
             <Button
               type="submit"
               disabled={!input.trim() || sending}
-              className="px-4 py-2.5 shrink-0 bg-gradient-to-r from-ticha-blue to-ticha-purple hover:opacity-90 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2.5 shrink-0 bg-gradient-to-r from-ticha-blue to-ticha-purple hover:opacity-90 disabled:opacity-50"
             >
               <Send className="w-4 h-4 text-white" />
             </Button>
           </form>
-          <p className="text-[10px] text-slate-400 text-center mt-2">
-            Ticha AI is trained on {userLevel} {streamName} curriculum
-          </p>
         </div>
       </section>
     </div>
