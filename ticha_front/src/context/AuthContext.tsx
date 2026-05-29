@@ -1,271 +1,287 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../services/api';
+import { supabase } from '../services/supabase';
 
 export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  level: string; // BEPC, Probatoire, BAC, GCE O-Level, GCE A-Level, Casual Learner
+  level: string; 
   mode: 'exam' | 'casual';
   access: 'full' | 'limited' | 'preview';
   streak: number;
   points: number;
   casualInterest?: string;
+  stream?: 'science' | 'arts';
 }
 
 interface AuthContextType {
   user: UserProfile | null;
-  token: string | null;
   loading: boolean;
-  login: (email: string, password?: string, name?: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string, name: string, level: string, casualInterest?: string) => Promise<boolean>;
-  logout: () => void;
-  updateLevel: (level: string) => void;
-  updateStreak: () => void;
-  addPoints: (points: number) => void;
+  logout: () => Promise<void>;
+  updateStreak: () => Promise<void>;
+  addPoints: (points: number) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper: Determine access level based on user's exam level
 const getAccessLevel = (level: string, mode: string): 'full' | 'limited' | 'preview' => {
-  if (mode === 'casual') return 'full'; // Casual learners get full access to casual content
-  
-  // Full access only for GCE levels (MVP)
-  const fullAccessLevels = ['GCE O-Level', 'GCE A-Level'];
-  if (fullAccessLevels.includes(level)) {
-    return 'full';
-  }
-  
-  // Limited access for BEPC, BAC, Probatoire (coming soon)
-  const limitedLevels = ['BEPC', 'BAC', 'Probatoire'];
-  if (limitedLevels.includes(level)) {
-    return 'limited';
-  }
-  
-  return 'preview';
+  if (mode === 'casual') return 'full';
+  return ['GCE O-Level', 'GCE A-Level'].includes(level) ? 'full' : 'limited';
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Load user session on startup
   useEffect(() => {
-    // Check localStorage first (MVP priority)
-    const storedToken = localStorage.getItem('ticha_token');
-    const storedUser = localStorage.getItem('ticha_user');
-
-    if (storedToken && storedUser) {
+    const checkSession = async () => {
       try {
-        const parsedUser = JSON.parse(storedUser);
-        setToken(storedToken);
-        setUser(parsedUser);
-      } catch (e) {
-        console.error('Failed to parse stored user', e);
-        localStorage.removeItem('ticha_token');
-        localStorage.removeItem('ticha_user');
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session) {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', sessionData.session.user.id)
+            .single();
+          
+          if (profile && !error) {
+            setUser({
+              id: profile.id,
+              email: profile.email,
+              name: profile.name,
+              level: profile.level,
+              mode: profile.mode,
+              access: profile.access || getAccessLevel(profile.level, profile.mode),
+              streak: profile.streak || 0,
+              points: profile.points || 0,
+              casualInterest: profile.casual_interest,
+              stream: profile.stream
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+      } finally {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    };
+    checkSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) {
+          setUser({
+            id: profile.id,
+            email: profile.email,
+            name: profile.name,
+            level: profile.level,
+            mode: profile.mode,
+            access: profile.access || getAccessLevel(profile.level, profile.mode),
+            streak: profile.streak || 0,
+            points: profile.points || 0,
+            casualInterest: profile.casual_interest,
+            stream: profile.stream
+          });
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  // Save to localStorage whenever user/token changes
-  useEffect(() => {
-    if (token && user) {
-      localStorage.setItem('ticha_token', token);
-      localStorage.setItem('ticha_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('ticha_token');
-      localStorage.removeItem('ticha_user');
-    }
-  }, [token, user]);
-
-  const login = async (email: string, password = 'Student', name?: string) => {
+  const login = async (email: string, password: string) => {
     setLoading(true);
-    
-    // First check localStorage for existing user (MVP fast path)
-    const storedUser = localStorage.getItem('ticha_user');
-    if (storedUser) {
-      try {
-        const existingUser = JSON.parse(storedUser);
-        if (existingUser.email === email) {
-          setToken(localStorage.getItem('ticha_token') || 'mock_token');
-          setUser(existingUser);
-          setLoading(false);
-          return true;
-        }
-      } catch (e) {
-        console.error('Failed to parse stored user', e);
-      }
-    }
-    
     try {
-      // Attempt backend API call
-      const response = await api.post('/api/profiles', { email, name: name || email.split('@')[0] });
-      const userProfile: UserProfile = {
-        id: response.data.id || 'usr_1',
-        email: response.data.email || email,
-        name: response.data.name || name || email.split('@')[0],
-        level: response.data.level || 'GCE A-Level',
-        mode: response.data.mode || 'exam',
-        access: getAccessLevel(response.data.level || 'GCE A-Level', response.data.mode || 'exam'),
-        streak: response.data.streak ?? 0,
-        points: response.data.points ?? 0,
-      };
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
 
-      const newToken = 'mock_jwt_token_' + Date.now();
-      setToken(newToken);
-      setUser(userProfile);
-      setLoading(false);
-      return true;
-    } catch (error) {
-      console.warn('[TICHA AUTH] Backend offline, creating mock account.', error);
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+        
+      if (profileError) throw profileError;
       
-      // Fallback: Create mock profile in localStorage
-      const mockLevel = 'GCE A-Level';
-      const fallbackUser: UserProfile = {
-        id: 'usr_mock_' + Math.random().toString(36).substr(2, 9),
-        email,
-        name: name || email.split('@')[0],
-        level: mockLevel,
-        mode: 'exam',
-        access: getAccessLevel(mockLevel, 'exam'),
-        streak: 0,
-        points: 0,
-      };
-
-      const mockToken = 'mock_jwt_token_' + Date.now();
-      setToken(mockToken);
-      setUser(fallbackUser);
-      setLoading(false);
+      if (profile) {
+        setUser({
+          id: profile.id,
+          email: profile.email,
+          name: profile.name,
+          level: profile.level,
+          mode: profile.mode,
+          access: profile.access || getAccessLevel(profile.level, profile.mode),
+          streak: profile.streak || 0,
+          points: profile.points || 0,
+          casualInterest: profile.casual_interest,
+          stream: profile.stream
+        });
+      }
       return true;
+    } catch (err) {
+      console.error('Login Error:', err);
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   const signup = async (email: string, password: string, name: string, level: string, casualInterest?: string) => {
     setLoading(true);
-    
-    // Determine mode and access level
-    const mode = level === 'Casual Learner' ? 'casual' : 'exam';
-    const accessLevel = getAccessLevel(level, mode);
-    
     try {
-      // Attempt backend API signup
-      const response = await api.post('/api/profiles', { 
-        email, 
-        name, 
-        level: mode === 'casual' ? 'Casual Learner' : level,
-        mode,
-        casualInterest 
-      });
+      const mode = level === 'Casual Learner' ? 'casual' : 'exam';
+      const access = getAccessLevel(level, mode);
       
-      const userProfile: UserProfile = {
-        id: response.data.id || 'usr_' + Date.now(),
-        email: response.data.email || email,
-        name: response.data.name || name,
-        level: response.data.level || level,
-        mode: response.data.mode || mode,
-        access: accessLevel,
-        streak: 0,
-        points: 0,
-        casualInterest: casualInterest,
-      };
-
-      const newToken = 'mock_jwt_token_' + Date.now();
-      setToken(newToken);
-      setUser(userProfile);
-      setLoading(false);
-      return true;
-    } catch (error) {
-      console.warn('[TICHA AUTH] Backend offline, saving to localStorage only.', error);
-
-      // Store in localStorage only (MVP)
-      const fallbackUser: UserProfile = {
-        id: 'usr_mock_' + Math.random().toString(36).substr(2, 9),
+      const { data, error } = await supabase.auth.signUp({
         email,
-        name,
+        password,
+        options: {
+          data: {
+            full_name: name,
+            level: level,
+            mode: mode,
+            casual_interest: casualInterest
+          }
+        }
+      });
+
+      if (error) throw error;
+      if (!data.user) throw new Error("No user returned");
+
+      // Create profile in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([{
+          id: data.user.id,
+          email: email,
+          name: name,
+          level: level,
+          mode: mode,
+          access: access,
+          streak: 0,
+          points: 0,
+          casual_interest: casualInterest,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }]);
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        throw profileError;
+      }
+
+      const userProfile: UserProfile = {
+        id: data.user.id,
+        email: email,
+        name: name,
         level: level,
         mode: mode,
-        access: accessLevel,
+        access: access,
         streak: 0,
         points: 0,
-        casualInterest: casualInterest,
+        casualInterest
       };
 
-      const mockToken = 'mock_jwt_token_' + Date.now();
-      setToken(mockToken);
-      setUser(fallbackUser);
-      setLoading(false);
+      setUser(userProfile);
       return true;
+    } catch (err) {
+      console.error('Signup Error:', err);
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('ticha_token');
-    localStorage.removeItem('ticha_user');
-  };
+  const updateStreak = async () => {
+    if (!user) return;
+    
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: progress, error: fetchError } = await supabase
+        .from('user_progress')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
 
-  const updateLevel = (newLevel: string) => {
-    if (user) {
-      const newAccess = getAccessLevel(newLevel, user.mode);
-      const updated = { ...user, level: newLevel, access: newAccess };
-      setUser(updated);
-      localStorage.setItem('ticha_user', JSON.stringify(updated));
-      
-      // Proactively sync with API (fire-and-forget)
-      api.post('/api/profiles', { email: user.email, level: newLevel }).catch((err) => {
-        console.warn('[TICHA API] Failed to sync educational level:', err.message);
-      });
-    }
-  };
+      if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
 
-  const updateStreak = () => {
-    if (user) {
-      const lastActive = localStorage.getItem('ticha_last_active');
-      const today = new Date().toDateString();
-      
-      let newStreak = user.streak;
-      if (lastActive !== today) {
+      let newStreak = 1;
+      if (progress) {
+        const lastActive = progress.last_active_date;
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-        
-        if (lastActive === yesterday.toDateString()) {
-          newStreak = user.streak + 1;
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        if (lastActive === yesterdayStr) {
+          newStreak = (progress.current_streak || 0) + 1;
         } else if (lastActive !== today) {
           newStreak = 1;
+        } else {
+          newStreak = progress.current_streak || 0;
         }
-        
-        localStorage.setItem('ticha_last_active', today);
-        const updated = { ...user, streak: newStreak };
-        setUser(updated);
-        localStorage.setItem('ticha_user', JSON.stringify(updated));
       }
+
+      const { error: upsertError } = await supabase
+        .from('user_progress')
+        .upsert({
+          user_id: user.id,
+          current_streak: newStreak,
+          last_active_date: today,
+          updated_at: new Date().toISOString()
+        });
+
+      if (upsertError) throw upsertError;
+
+      // Update user state
+      setUser({ ...user, streak: newStreak });
+    } catch (error) {
+      console.error('Error updating streak:', error);
     }
   };
 
-  const addPoints = (points: number) => {
-    if (user) {
-      const updated = { ...user, points: user.points + points };
-      setUser(updated);
-      localStorage.setItem('ticha_user', JSON.stringify(updated));
+  const addPoints = async (points: number) => {
+    if (!user) return;
+    
+    try {
+      const newPoints = (user.points || 0) + points;
+      
+      const { error } = await supabase
+        .from('user_progress')
+        .upsert({
+          user_id: user.id,
+          total_xp: newPoints,
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) throw error;
+
+      // Update user state
+      setUser({ ...user, points: newPoints });
+    } catch (error) {
+      console.error('Error adding points:', error);
     }
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      token, 
-      loading, 
-      login, 
-      signup, 
-      logout, 
-      updateLevel,
-      updateStreak,
-      addPoints,
-    }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, updateStreak, addPoints }}>
       {children}
     </AuthContext.Provider>
   );
@@ -273,8 +289,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

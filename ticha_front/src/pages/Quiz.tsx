@@ -7,21 +7,13 @@ import {
   CheckCircle2, 
   XCircle, 
   Award,
-  BookOpen,
   ArrowLeft
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { mockData } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-
-interface QuizQuestion {
-  id: string;
-  question: string;
-  options: { key: string; text: string }[];
-  correctAnswer: string;
-  explanation: string;
-}
+import { getQuestionsByTopic } from '../services/questions';
+import type { QuizQuestion } from '../services/questions';
 
 export const Quiz: React.FC = () => {
   const { user } = useAuth();
@@ -29,7 +21,7 @@ export const Quiz: React.FC = () => {
   const navigate = useNavigate();
 
   // Load contextual subject/topic if passed from navigation
-  const state = location.state as { topic?: string; subject?: string; challengeTitle?: string } | null;
+  const state = location.state as { topic?: string; topicId?: string; subject?: string; challengeTitle?: string } | null;
 
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -37,11 +29,24 @@ export const Quiz: React.FC = () => {
   const [answered, setAnswered] = useState(false);
   const [score, setScore] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Populate questions list
-    setQuestions(mockData.questions);
-  }, []);
+    // Fetch real questions from the backend!
+    const fetchQuestions = async () => {
+      try {
+        setLoading(true);
+        const data = await getQuestionsByTopic(state?.topicId);
+        setQuestions(data);
+      } catch (error) {
+        console.error("Failed to load questions:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchQuestions();
+  }, [state?.topicId]);
 
   const handleOptionClick = (key: string) => {
     if (answered) return;
@@ -88,7 +93,15 @@ export const Quiz: React.FC = () => {
         </div>
       </div>
 
-      {quizFinished ? (
+      {loading ? (
+        <div className="py-20 flex justify-center"><div className="animate-spin w-10 h-10 border-4 border-tichaBlue border-t-transparent rounded-full" /></div>
+      ) : questions.length === 0 ? (
+        <Card className="p-8 text-center space-y-4">
+          <h3 className="font-bold text-xl">No Questions Found</h3>
+          <p className="text-slate-500 text-sm">We don't have any questions for this topic yet. Check back later!</p>
+          <Button onClick={() => navigate(-1)}>Go Back</Button>
+        </Card>
+      ) : quizFinished ? (
         /* FINAL SCOREBOARD OVERLAY */
         <Card variant="glass" className="p-8 text-center space-y-6 animate-in fade-in zoom-in duration-200">
           <div className="w-16 h-16 rounded-2xl bg-yellow-50 flex items-center justify-center text-yellow-500 border border-yellow-100 shadow-md mx-auto animate-bounce">
@@ -135,8 +148,7 @@ export const Quiz: React.FC = () => {
             </Button>
           </div>
         </Card>
-      ) : activeQuestion ? (
-        
+      ) : (
         /* ACTIVE PRACTICE VIEWER */
         <div className="space-y-6">
           
@@ -208,7 +220,7 @@ export const Quiz: React.FC = () => {
                 <h4 className="font-extrabold text-tichaPurple text-xs uppercase tracking-wider">Ticha AI Solution Walkthrough</h4>
               </div>
               <p className="text-xs text-slate-650 leading-relaxed whitespace-pre-line font-medium">
-                {activeQuestion.explanation}
+                {activeQuestion.explanation || "Correct answer selected. Great job!"}
               </p>
               
               <div className="flex justify-end pt-2">
@@ -224,8 +236,6 @@ export const Quiz: React.FC = () => {
           )}
 
         </div>
-      ) : (
-        <div className="py-20 flex justify-center"><div className="animate-spin w-10 h-10 border-4 border-tichaBlue border-t-transparent rounded-full" /></div>
       )}
 
     </div>

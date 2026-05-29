@@ -1,42 +1,35 @@
-import api, { mockData, safeApiCall } from './api';
+// ticha_front/src/services/subjects.ts
+import { api } from './api';
 
 export interface Subject {
   id: string;
   name: string;
-  code: string;
-  icon: string;
-  topicCount: number;
-  mastery: number;
+  // We make these optional because our new Database schema relies on actual relations 
+  // rather than hardcoded icons and codes.
+  code?: string;
+  icon?: string;
+  topicCount?: number;
+  mastery?: number;
+  level_target?: string;
 }
 
 export const getSubjects = async (): Promise<Subject[]> => {
-  return safeApiCall<Subject[]>(
-    api.get('/api/subjects'),
-    mockData.subjects,
-    'Retrieving mock curriculum subjects'
-  );
+  // Axios automatically appends this to the baseURL, making it /api/subjects
+  const response = await api.get('/subjects'); 
+  return response.data;
 };
 
-export const createSubject = async (subject: Omit<Subject, 'id' | 'mastery' | 'topicCount'>): Promise<Subject> => {
-  const newSubject = {
-    ...subject,
-    id: `subj_${Math.random().toString(36).substr(2, 9)}`,
-    topicCount: 0,
-    mastery: 0,
-  };
-  return safeApiCall<Subject>(
-    api.post('/api/subjects', subject),
-    newSubject,
-    'Creating new subject (local mockup)'
-  );
+export const createSubject = async (subject: Partial<Subject>): Promise<Subject> => {
+  const response = await api.post('/subjects', subject);
+  return response.data;
 };
 
 export const deleteSubject = async (id: string): Promise<boolean> => {
   try {
-    await api.delete(`/api/subjects/${id}`);
+    await api.delete(`/subjects/${id}`);
     return true;
   } catch (error) {
-    console.warn(`[TICHA API] Delete subject ${id} failed, returning local success flag`, error);
-    return true;
+    console.error(`[TICHA API] Delete subject ${id} failed`, error);
+    return false;
   }
 };

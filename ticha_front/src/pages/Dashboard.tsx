@@ -1,42 +1,26 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Flame, 
-  Trophy, 
-  Sparkles, 
-  Calendar, 
-  BookOpen, 
-  ArrowRight,
-  Plus,
-  FileSearch,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
-  Lock,
-  Target,
-  TrendingUp,
-  MessageCircle,
-  Brain,
-  Zap,
-  ChevronRight,
-  Star,
-  Award
+  Flame, Trophy, Sparkles, Calendar, BookOpen, ArrowRight,
+  Plus, FileSearch, CheckCircle2, AlertCircle, Clock,
+  Lock, Target, TrendingUp, MessageCircle, Brain, Zap,
+  ChevronRight, Star, Award, Loader2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabase';
 import { Card } from '../components/common/Card';
 import { ProgressRing } from '../components/common/ProgressRing';
 import { Button } from '../components/common/Button';
 
-// Types
 interface Subject {
   id: string;
   name: string;
   code: string;
   mastery: number;
-  topicCount: number;
+  topic_count: number;
   stream: 'science' | 'arts';
-  icon?: string;
-  color?: string;
+  user_id: string;
+  created_at: string;
 }
 
 interface Task {
@@ -45,200 +29,242 @@ interface Task {
   subject: string;
   duration: string;
   completed: boolean;
-  xpReward: number;
+  xp_reward: number;
+  user_id: string;
+  created_at: string;
 }
 
-interface AITip {
-  title: string;
-  message: string;
-  icon: React.ReactElement;
+interface UserProgress {
+  id: string;
+  user_id: string;
+  total_xp: number;
+  current_streak: number;
+  longest_streak: number;
+  last_active_date: string;
+  average_mastery: number;
+  updated_at: string;
 }
 
 export const Dashboard: React.FC = () => {
-  const { user, updateStreak, addPoints } = useAuth();
+  const { user, session } = useAuth();
   const navigate = useNavigate();
   
-  // State
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [progress, setProgress] = useState<UserProgress | null>(null);
   const [loading, setLoading] = useState(true);
-  const [streak, setStreak] = useState(0);
-  const [points, setPoints] = useState(0);
-  const [aiTip, setAiTip] = useState<AITip | null>(null);
-  const [lastActiveDate, setLastActiveDate] = useState<string>('');
+  const [syncing, setSyncing] = useState(false);
 
   const userId = user?.id;
   const userLevel = user?.level || 'GCE A-Level';
-  const userStream = localStorage.getItem(`ticha_user_stream_${userId}`) || 'science';
+  const userStream = user?.stream || 'science';
   const hasFullAccess = user?.access === 'full';
   const isLimitedAccess = user?.access === 'limited';
 
-  // Generate AI tip based on user's level, stream, and progress
-  const generateAITip = (subjectsList: Subject[], currentPoints: number, currentStreak: number): AITip => {
-    const weakestSubject = subjectsList.reduce((prev, curr) => 
-      (curr.mastery < prev.mastery) ? curr : prev, subjectsList[0]);
-    
-    const averageMastery = subjectsList.length > 0 
-      ? Math.round(subjectsList.reduce((acc, s) => acc + s.mastery, 0) / subjectsList.length)
-      : 0;
-
-    const tips: AITip[] = [
-      {
-        title: `${weakestSubject?.name || 'Your subjects'} needs attention`,
-        message: `Based on your performance, I recommend spending 20 minutes on ${weakestSubject?.name || 'your weakest subject'} today. Want me to create a quick quiz?`,
-        icon: <Brain className="w-5 h-5 text-tichaBlue" />
-      },
-      {
-        title: `${currentStreak} day streak! 🔥`,
-        message: `You're on fire! Keep studying daily to maintain your streak. Complete today's tasks to earn bonus XP.`,
-        icon: <Flame className="w-5 h-5 text-orange-500" />
-      },
-      {
-        title: `${userLevel} ${userStream === 'science' ? 'Science' : 'Arts'} strategy`,
-        message: `For ${userLevel} ${userStream === 'science' ? 'Science' : 'Arts'} students, focus on past paper practice. I can generate questions from recent exams.`,
-        icon: <Target className="w-5 h-5 text-emerald-500" />
-      },
-      {
-        title: `${100 - averageMastery}% left to master`,
-        message: `You've mastered ${averageMastery}% of your syllabus. Let's work on the remaining topics together!`,
-        icon: <TrendingUp className="w-5 h-5 text-purple-500" />
-      }
-    ];
-    
-    // Return tip based on user's situation
-    if (weakestSubject && weakestSubject.mastery < 30) return tips[0];
-    if (currentStreak > 5) return tips[1];
-    if (averageMastery < 50) return tips[3];
-    return tips[2];
-  };
-
-  // Load user data from localStorage (per user)
+  // Fetch all user data from Supabase
   useEffect(() => {
-    const loadUserData = () => {
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
-
-      // Load subjects
-      const subjectsKey = `ticha_user_subjects_${userId}`;
-      const storedSubjects = localStorage.getItem(subjectsKey);
-      
-      if (storedSubjects) {
-        const parsedSubjects = JSON.parse(storedSubjects);
-        setSubjects(parsedSubjects);
-      } else {
-        // No subjects - redirect to onboarding
-        navigate('/onboarding');
-        return;
-      }
-
-      // Load streak
-      const streakKey = `ticha_user_streak_${userId}`;
-      const lastActiveKey = `ticha_last_active_${userId}`;
-      const today = new Date().toDateString();
-      const storedLastActive = localStorage.getItem(lastActiveKey);
-      let currentStreak = parseInt(localStorage.getItem(streakKey) || '0');
-      
-      if (storedLastActive !== today) {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        
-        if (storedLastActive === yesterday.toDateString()) {
-          currentStreak++;
-        } else if (storedLastActive !== today) {
-          currentStreak = 1;
-        }
-        
-        localStorage.setItem(lastActiveKey, today);
-        localStorage.setItem(streakKey, currentStreak.toString());
-        if (updateStreak) updateStreak();
-      }
-      setStreak(currentStreak);
-      setLastActiveDate(storedLastActive || '');
-
-      // Load points
-      const pointsKey = `ticha_user_points_${userId}`;
-      const savedPoints = localStorage.getItem(pointsKey);
-      if (savedPoints) {
-        setPoints(parseInt(savedPoints));
-      } else {
-        const initialPoints = 100;
-        localStorage.setItem(pointsKey, initialPoints.toString());
-        setPoints(initialPoints);
-      }
-
-      // Load or generate tasks
-      const tasksKey = `ticha_user_tasks_${userId}`;
-      const storedTasks = localStorage.getItem(tasksKey);
-      
-      if (storedTasks) {
-        setTasks(JSON.parse(storedTasks));
-      } else {
-        // Generate intelligent tasks based on subjects
-        const generatedTasks: Task[] = subjects.map((subject, index) => ({
-          id: `task-${Date.now()}-${index}`,
-          title: subject.mastery === 0 
-            ? `Start learning ${subject.name} fundamentals`
-            : subject.mastery < 50
-              ? `Review ${subject.name} - ${subject.mastery}% mastered`
-              : `Advanced practice: ${subject.name}`,
-          subject: subject.name,
-          duration: subject.mastery < 30 ? '25 min' : '15 min',
-          completed: false,
-          xpReward: subject.mastery < 30 ? 20 : 10
-        }));
-        setTasks(generatedTasks.slice(0, 4));
-        localStorage.setItem(tasksKey, JSON.stringify(generatedTasks.slice(0, 4)));
-      }
-
-      // Generate AI tip
-      const tip = generateAITip(subjects, points, currentStreak);
-      setAiTip(tip);
-
+    if (!userId) {
       setLoading(false);
+      return;
+    }
+
+    const fetchUserData = async () => {
+      setLoading(true);
+      try {
+        // Fetch subjects
+        const { data: subjectsData, error: subjectsError } = await supabase
+          .from('subjects')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: true });
+
+        if (subjectsError) throw subjectsError;
+
+        if (!subjectsData || subjectsData.length === 0) {
+          // No subjects - redirect to onboarding
+          navigate('/onboarding');
+          return;
+        }
+
+        setSubjects(subjectsData);
+
+        // Fetch or create user progress
+        const { data: progressData, error: progressError } = await supabase
+          .from('user_progress')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (progressError && progressError.code !== 'PGRST116') throw progressError;
+
+        if (progressData) {
+          setProgress(progressData);
+        } else {
+          // Create initial progress record
+          const { data: newProgress, error: createError } = await supabase
+            .from('user_progress')
+            .insert([{
+              user_id: userId,
+              total_xp: 0,
+              current_streak: 0,
+              longest_streak: 0,
+              last_active_date: new Date().toISOString().split('T')[0],
+              average_mastery: 0
+            }])
+            .select()
+            .single();
+
+          if (createError) throw createError;
+          setProgress(newProgress);
+        }
+
+        // Fetch today's tasks
+        const today = new Date().toISOString().split('T')[0];
+        const { data: tasksData, error: tasksError } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('user_id', userId)
+          .gte('created_at', today)
+          .order('created_at', { ascending: true });
+
+        if (tasksError) throw tasksError;
+
+        if (tasksData && tasksData.length > 0) {
+          setTasks(tasksData);
+        } else {
+          // Generate initial tasks based on subjects
+          const generatedTasks = subjectsData.map((subject, index) => ({
+            user_id: userId,
+            title: subject.mastery === 0 
+              ? `Start learning ${subject.name} fundamentals`
+              : subject.mastery < 50
+                ? `Review ${subject.name} - ${subject.mastery}% mastered`
+                : `Advanced practice: ${subject.name}`,
+            subject: subject.name,
+            duration: subject.mastery < 30 ? '25 min' : '15 min',
+            completed: false,
+            xp_reward: subject.mastery < 30 ? 20 : 10,
+            created_at: new Date().toISOString()
+          })).slice(0, 4);
+
+          const { data: newTasks, error: insertError } = await supabase
+            .from('tasks')
+            .insert(generatedTasks)
+            .select();
+
+          if (insertError) throw insertError;
+          if (newTasks) setTasks(newTasks);
+        }
+
+        // Update streak
+        await updateStreak();
+
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    loadUserData();
-  }, [userId, navigate, updateStreak]);
+    fetchUserData();
+  }, [userId, navigate]);
 
-  // Toggle task completion
-  const toggleTask = async (taskId: string, currentStatus: boolean, xpReward: number) => {
-    if (currentStatus) return; // Can't uncomplete tasks
+  const updateStreak = async () => {
+    if (!userId || !progress) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const lastActive = progress.last_active_date;
     
-    const updatedTasks = tasks.map(task =>
-      task.id === taskId ? { ...task, completed: true } : task
-    );
-    setTasks(updatedTasks);
-    
-    const tasksKey = `ticha_user_tasks_${userId}`;
-    localStorage.setItem(tasksKey, JSON.stringify(updatedTasks));
-    
-    // Add points
-    const pointsKey = `ticha_user_points_${userId}`;
-    const newPoints = points + xpReward;
-    setPoints(newPoints);
-    localStorage.setItem(pointsKey, newPoints.toString());
-    if (addPoints) addPoints(xpReward);
-    
-    // Update subject mastery slightly (simulate progress)
-    const updatedSubjects = subjects.map(subject => {
-      if (updatedTasks.find(t => t.subject === subject.name && t.completed)) {
-        const newMastery = Math.min(subject.mastery + 5, 100);
-        return { ...subject, mastery: newMastery };
-      }
-      return subject;
-    });
-    setSubjects(updatedSubjects);
-    const subjectsKey = `ticha_user_subjects_${userId}`;
-    localStorage.setItem(subjectsKey, JSON.stringify(updatedSubjects));
+    if (lastActive === today) return;
+
+    let newStreak = progress.current_streak;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    if (lastActive === yesterdayStr) {
+      newStreak += 1;
+    } else if (lastActive !== today) {
+      newStreak = 1;
+    }
+
+    const { error } = await supabase
+      .from('user_progress')
+      .update({
+        current_streak: newStreak,
+        longest_streak: Math.max(newStreak, progress.longest_streak),
+        last_active_date: today,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId);
+
+    if (!error && progress) {
+      setProgress({
+        ...progress,
+        current_streak: newStreak,
+        longest_streak: Math.max(newStreak, progress.longest_streak),
+        last_active_date: today
+      });
+    }
   };
 
-  // Generate new AI tip
-  const refreshAITip = () => {
-    if (subjects.length > 0) {
-      const newTip = generateAITip(subjects, points, streak);
-      setAiTip(newTip);
+  const toggleTask = async (taskId: string, currentCompleted: boolean, xpReward: number) => {
+    if (currentCompleted) return;
+    if (!userId || !progress) return;
+
+    setSyncing(true);
+    try {
+      // Update task as completed
+      const { error: taskError } = await supabase
+        .from('tasks')
+        .update({ completed: true })
+        .eq('id', taskId)
+        .eq('user_id', userId);
+
+      if (taskError) throw taskError;
+
+      // Update local state
+      setTasks(tasks.map(task =>
+        task.id === taskId ? { ...task, completed: true } : task
+      ));
+
+      // Add XP to user progress
+      const newTotalXP = progress.total_xp + xpReward;
+      const { error: progressError } = await supabase
+        .from('user_progress')
+        .update({ 
+          total_xp: newTotalXP,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (progressError) throw progressError;
+
+      setProgress({ ...progress, total_xp: newTotalXP });
+
+      // Update subject mastery slightly (simulate progress)
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        const subjectToUpdate = subjects.find(s => s.name === task.subject);
+        if (subjectToUpdate) {
+          const newMastery = Math.min(subjectToUpdate.mastery + 5, 100);
+          const { error: subjectError } = await supabase
+            .from('subjects')
+            .update({ mastery: newMastery })
+            .eq('id', subjectToUpdate.id);
+
+          if (!subjectError) {
+            setSubjects(subjects.map(s =>
+              s.id === subjectToUpdate.id ? { ...s, mastery: newMastery } : s
+            ));
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Error completing task:', error);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -303,8 +329,9 @@ export const Dashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="animate-spin w-10 h-10 border-4 border-tichaBlue border-t-transparent rounded-full" />
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-10 h-10 text-tichaBlue animate-spin" />
+        <p className="text-slate-500 text-sm">Loading your dashboard...</p>
       </div>
     );
   }
@@ -315,12 +342,14 @@ export const Dashboard: React.FC = () => {
   
   const todayTasks = tasks.filter(t => !t.completed).slice(0, 3);
   const completedTasks = tasks.filter(t => t.completed).length;
+  const totalXP = progress?.total_xp || 0;
+  const currentStreak = progress?.current_streak || 0;
   const streamDisplay = userStream === 'science' ? 'Science' : 'Arts';
 
   return (
     <div className="space-y-6 font-sans pb-8">
       
-      {/* Welcome Banner with AI Integration */}
+      {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-8 rounded-3xl text-white relative overflow-hidden shadow-xl border border-slate-700">
         <div className="absolute top-0 right-0 w-[40%] h-full bg-tichaBlue/10 rounded-full blur-[100px] pointer-events-none" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -357,30 +386,6 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Smart Tip Card */}
-      {aiTip && (
-        <div className="bg-gradient-to-r from-tichaBlue/5 to-tichaPurple/5 rounded-2xl p-5 border border-tichaBlue/20 cursor-pointer hover:shadow-lg transition-all" onClick={refreshAITip}>
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white shadow-md flex items-center justify-center">
-                {aiTip.icon}
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                  {aiTip.title}
-                  <span className="text-xs font-normal text-slate-400 bg-white px-2 py-0.5 rounded-full">AI Tip</span>
-                </h3>
-                <p className="text-sm text-slate-600 mt-1 max-w-2xl">{aiTip.message}</p>
-              </div>
-            </div>
-            <button className="text-slate-400 hover:text-slate-600 text-xs flex items-center gap-1">
-              <Zap className="w-3 h-3" />
-              New tip
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
@@ -397,14 +402,6 @@ export const Dashboard: React.FC = () => {
             <p className="text-xs text-slate-400 leading-relaxed">
               Across your {subjects.length} {userLevel} subjects
             </p>
-            {averageMastery === 0 && (
-              <button 
-                onClick={() => navigate('/quiz')}
-                className="text-xs text-tichaBlue font-semibold mt-2 flex items-center gap-1 hover:underline"
-              >
-                Start first quiz <ChevronRight className="w-3 h-3" />
-              </button>
-            )}
           </div>
         </Card>
 
@@ -413,7 +410,7 @@ export const Dashboard: React.FC = () => {
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total XP</span>
-              <h3 className="text-2xl font-black text-slate-900">{points} XP</h3>
+              <h3 className="text-2xl font-black text-slate-900">{totalXP} XP</h3>
             </div>
             <div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center text-yellow-500 shadow-sm border border-yellow-100">
               <Trophy className="w-5 h-5" />
@@ -430,7 +427,7 @@ export const Dashboard: React.FC = () => {
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Study Streak</span>
-              <h3 className="text-2xl font-black text-slate-900">{streak} {streak === 1 ? 'Day' : 'Days'}</h3>
+              <h3 className="text-2xl font-black text-slate-900">{currentStreak} {currentStreak === 1 ? 'Day' : 'Days'}</h3>
             </div>
             <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 shadow-sm border border-orange-100">
               <Flame className="w-5 h-5 fill-current" />
@@ -438,7 +435,7 @@ export const Dashboard: React.FC = () => {
           </div>
           <div className="mt-4 border-t border-slate-100 pt-3 flex items-center justify-between text-xs text-slate-400">
             <span>Study daily to grow your streak!</span>
-            <span className="text-orange-600 font-bold">🔥 {streak} Day{streak !== 1 ? 's' : ''}</span>
+            <span className="text-orange-600 font-bold">🔥 {currentStreak} Day{currentStreak !== 1 ? 's' : ''}</span>
           </div>
         </Card>
       </div>
@@ -473,7 +470,7 @@ export const Dashboard: React.FC = () => {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">{subject.icon || '📚'}</span>
+                    <span className="text-xl">📚</span>
                     <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase bg-slate-100 px-2 py-0.5 rounded-md">
                       {subject.code}
                     </span>
@@ -492,7 +489,7 @@ export const Dashboard: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex justify-between items-center text-[10px] font-medium text-slate-400 border-t border-slate-100/50 pt-2.5">
-                  <span>{subject.topicCount} topics</span>
+                  <span>{subject.topic_count} topics</span>
                   <span className="text-tichaPurple font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
                     Start Quiz <ChevronRight className="w-3 h-3" />
                   </span>
@@ -502,20 +499,15 @@ export const Dashboard: React.FC = () => {
           </div>
         </Card>
 
-        {/* Today's AI Tasks */}
+        {/* Today's Tasks */}
         <Card className="space-y-5 flex flex-col justify-between">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-tichaPurple" />
-                <h3 className="font-extrabold text-slate-800 text-lg">Today's AI Tasks</h3>
+                <h3 className="font-extrabold text-slate-800 text-lg">Today's Tasks</h3>
               </div>
-              <button 
-                onClick={() => navigate('/plans')}
-                className="w-7 h-7 rounded-lg hover:bg-slate-100 border border-slate-100 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+              {syncing && <Loader2 className="w-4 h-4 text-tichaBlue animate-spin" />}
             </div>
 
             {todayTasks.length === 0 ? (
@@ -524,7 +516,7 @@ export const Dashboard: React.FC = () => {
                   <CheckCircle2 className="w-8 h-8 text-emerald-500" />
                 </div>
                 <p className="text-sm font-medium text-slate-700">All caught up! 🎉</p>
-                <p className="text-xs text-slate-400">Great work today. Check back tomorrow for new AI-generated tasks.</p>
+                <p className="text-xs text-slate-400">Great work today. Check back tomorrow for new tasks.</p>
                 <Button size="sm" onClick={() => navigate('/quiz')} className="mt-2">
                   Take a Practice Quiz
                 </Button>
@@ -539,8 +531,9 @@ export const Dashboard: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={task.completed}
-                      onChange={() => toggleTask(task.id, task.completed, task.xpReward)}
-                      className="w-4.5 h-4.5 text-tichaPurple border-slate-300 rounded focus:ring-tichaPurple cursor-pointer mt-0.5"
+                      onChange={() => toggleTask(task.id, task.completed, task.xp_reward)}
+                      disabled={syncing}
+                      className="w-4.5 h-4.5 text-tichaPurple border-slate-300 rounded focus:ring-tichaPurple cursor-pointer mt-0.5 disabled:opacity-50"
                     />
                     <div className="flex-1 space-y-1">
                       <p className="text-xs font-bold leading-tight text-slate-700">
@@ -553,7 +546,7 @@ export const Dashboard: React.FC = () => {
                           <span>{task.duration}</span>
                         </div>
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                          +{task.xpReward} XP
+                          +{task.xp_reward} XP
                         </span>
                       </div>
                     </div>
@@ -576,9 +569,6 @@ export const Dashboard: React.FC = () => {
                   style={{ width: `${(completedTasks / tasks.length) * 100}%` }} 
                 />
               </div>
-              <p className="text-xs text-slate-400 mt-2">
-                {tasks.length - completedTasks} task{tasks.length - completedTasks !== 1 ? 's' : ''} remaining • +{(tasks.length - completedTasks) * 10} XP available
-              </p>
             </div>
           )}
 
@@ -643,27 +633,6 @@ export const Dashboard: React.FC = () => {
           </div>
         </button>
       </div>
-
-      {/* Motivational Banner for new users */}
-      {averageMastery === 0 && subjects.length > 0 && (
-        <div className="bg-gradient-to-r from-tichaBlue/15 to-tichaPurple/15 rounded-2xl p-5 border border-tichaBlue/30">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-white shadow-md flex items-center justify-center">
-                <Star className="w-6 h-6 text-tichaBlue" />
-              </div>
-              <div>
-                <h4 className="font-bold text-slate-800">Ready to start your journey?</h4>
-                <p className="text-xs text-slate-500">Complete your first quiz to unlock personalized recommendations</p>
-              </div>
-            </div>
-            <Button onClick={() => navigate('/quiz')} className="whitespace-nowrap">
-              Start First Quiz
-              <Award className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

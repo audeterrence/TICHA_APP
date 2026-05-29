@@ -29,44 +29,86 @@ export const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return setError('Please fill in your email address.');
-    if (!isLogin && !name.trim()) return setError('Please fill in your name.');
-    if (!isLogin && isCasualMode && !casualInterest.trim()) return setError('Please tell us what you want to learn.');
+    setError('');
+    
+    // Validation
+    if (!email.trim()) {
+      setError('Please fill in your email address.');
+      return;
+    }
+    
+    if (!password.trim()) {
+      setError('Please fill in your password.');
+      return;
+    }
+    
+    if (!isLogin && !name.trim()) {
+      setError('Please fill in your name.');
+      return;
+    }
+    
+    if (!isLogin && isCasualMode && !casualInterest.trim()) {
+      setError('Please tell us what you want to learn.');
+      return;
+    }
     
     // Check if selected exam level is available
     if (!isLogin && !isCasualMode && !isLevelAvailable(level)) {
       setError(`${level} is currently in development. Please select GCE O-Level or GCE A-Level for full access, or try Casual Learner mode.`);
-      setLoading(false);
       return;
     }
 
-    setError('');
     setLoading(true);
     
-    // Store user preferences
-    localStorage.setItem('ticha_user_level', isCasualMode ? 'casual' : level);
-    localStorage.setItem('ticha_user_name', name.trim() || 'Student');
-    localStorage.setItem('ticha_user_mode', isCasualMode ? 'casual' : 'exam');
-    if (isCasualMode) {
-      localStorage.setItem('ticha_casual_interest', casualInterest);
-    }
+    try {
+      let success = false;
+      
+      // Store user preferences in localStorage BEFORE auth
+      localStorage.setItem('ticha_user_level', isCasualMode ? 'casual' : level);
+      localStorage.setItem('ticha_user_name', name.trim() || 'Student');
+      localStorage.setItem('ticha_user_mode', isCasualMode ? 'casual' : 'exam');
+      if (isCasualMode) {
+        localStorage.setItem('ticha_casual_interest', casualInterest);
+      }
 
-    let success = false;
-    if (isLogin) {
-      success = await login(email, password || 'Student');
-    } else {
-      success = await signup(email, password, name, isCasualMode ? 'Casual Learner' : level, casualInterest);
-    }
+      if (isLogin) {
+        console.log("Attempting login with:", email);
+        success = await login(email, password);
+      } else {
+        console.log("Attempting signup with:", email, name);
+        // Make sure to pass all required parameters to signup
+        success = await signup(email, password, name, isCasualMode ? 'Casual Learner' : level, casualInterest);
+      }
 
-    setLoading(false);
-    
-    // Redirect based on mode and access
-    if (!isLogin && isCasualMode) {
-      navigate('/casual');
-    } else if (!isLogin && !isCasualMode) {
-      navigate('/dashboard');
-    } else {
-      navigate('/onboarding');
+      console.log("Auth result:", success);
+
+      if (success) {
+        console.log("Authentication successful, navigating...");
+        
+        // Redirect based on mode and access
+        if (!isLogin && isCasualMode) {
+          navigate('/casual');
+        } else if (!isLogin && !isCasualMode) {
+          navigate('/dashboard');
+        } else if (isLogin) {
+          // Check if user has completed onboarding
+          const hasCompletedOnboarding = localStorage.getItem('ticha_onboarding_completed');
+          if (hasCompletedOnboarding === 'true') {
+            navigate('/dashboard');
+          } else {
+            navigate('/onboarding');
+          }
+        } else {
+          navigate('/onboarding');
+        }
+      } else {
+        setError('Authentication failed. Please check your credentials and try again.');
+      }
+    } catch (err: any) {
+      console.error("Form error:", err);
+      setError(err.message || 'An unexpected error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -103,6 +145,10 @@ export const Login: React.FC = () => {
         @keyframes gradient-shift {
           0%, 100% { background-position: 0% 50%; background-size: 200% 200%; }
           50% { background-position: 100% 50%; background-size: 200% 200%; }
+        }
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
         }
         .animate-float { animation: float 7s ease-in-out infinite; }
         .animate-float-delayed { animation: float-reverse 8s ease-in-out infinite 1.5s; }
@@ -166,8 +212,6 @@ export const Login: React.FC = () => {
               <p className="text-slate-300 text-lg leading-relaxed max-w-md border-l-4 border-[#2563EB] pl-6 bg-slate-900/40 p-4 rounded-r-2xl backdrop-blur-sm shadow-xl">
                 Your personal AI tutor for exam prep or casual learning. Master any subject at your own pace.
               </p>
-              
-           
             </div>
           </div>
         </div>
@@ -278,12 +322,18 @@ export const Login: React.FC = () => {
               {!isLogin && (
                 <>
                   <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-300">
-                    <label className="text-sm font-bold text-slate-700">Full Name</label>
+                    <label htmlFor="name" className="text-sm font-bold text-slate-700">Full Name</label>
                     <div className="relative group">
                       <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#2563EB] transition-colors z-10" />
                       <input
-                        type="text" required placeholder={isCasualMode ? "Sarah Johnson" : "Alex Mbah"}
-                        value={name} onChange={(e) => setName(e.target.value)}
+                        id="name"
+                        name="name"
+                        autoComplete="name"
+                        type="text" 
+                        required 
+                        placeholder={isCasualMode ? "Sarah Johnson" : "Alex Mbah"}
+                        value={name} 
+                        onChange={(e) => setName(e.target.value)}
                         className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10 transition-all placeholder-slate-400 font-medium"
                       />
                     </div>
@@ -292,16 +342,20 @@ export const Login: React.FC = () => {
                   {/* Casual Learner Interest Selection */}
                   {isCasualMode && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-300 delay-75">
-                      <label className="text-sm font-bold text-slate-700">What interests you?</label>
+                      <label htmlFor="casualInterest" className="text-sm font-bold text-slate-700">What interests you?</label>
                       <div className="relative group">
                         <Sparkles className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#10B981] transition-colors z-10" />
                         <select
-                          value={casualInterest} onChange={(e) => setCasualInterest(e.target.value)}
+                          id="casualInterest"
+                          name="casualInterest"
+                          value={casualInterest} 
+                          onChange={(e) => setCasualInterest(e.target.value)}
                           className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl py-3.5 pl-12 pr-10 text-[15px] focus:outline-none focus:border-[#10B981] focus:ring-4 focus:ring-[#10B981]/10 transition-all cursor-pointer appearance-none font-medium relative z-20"
+                          required={isCasualMode}
                         >
                           <option value="">Select your interest</option>
                           {casualInterests.map(interest => (
-                            <option key={interest.value} value={interest.value}>{interest.label}</option>
+                            <option key={interest.value} value={interest.value}>{interest.icon} {interest.label}</option>
                           ))}
                         </select>
                         <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none z-30">
@@ -310,19 +364,23 @@ export const Login: React.FC = () => {
                           </svg>
                         </div>
                       </div>
-                      <p className="text-xs text-slate-400 pl-4"> No pressure, just curiosity.</p>
+                      <p className="text-xs text-slate-400 pl-4">No pressure, just curiosity.</p>
                     </div>
                   )}
 
                   {/* Exam Level Selection (only for exam prep mode) */}
                   {!isCasualMode && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-300 delay-75">
-                      <label className="text-sm font-bold text-slate-700">Examination Level</label>
+                      <label htmlFor="level" className="text-sm font-bold text-slate-700">Examination Level</label>
                       <div className="relative group">
                         <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#2563EB] transition-colors z-10" />
                         <select
-                          value={level} onChange={(e) => setLevel(e.target.value)}
+                          id="level"
+                          name="level"
+                          value={level} 
+                          onChange={(e) => setLevel(e.target.value)}
                           className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl py-3.5 pl-12 pr-10 text-[15px] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10 transition-all cursor-pointer appearance-none font-medium relative z-20"
+                          required={!isCasualMode}
                         >
                           {examLevels.map((exam) => (
                             <option 
@@ -348,9 +406,6 @@ export const Login: React.FC = () => {
                           <span>{level} is in development. You can still sign up and get early access when ready.</span>
                         </div>
                       )}
-                      
-                      {/* Available levels info */}
-           
                     </div>
                   )}
                 </>
@@ -358,12 +413,18 @@ export const Login: React.FC = () => {
 
               {/* Email Field */}
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Email Address</label>
+                <label htmlFor="email" className="text-sm font-bold text-slate-700">Email Address</label>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#2563EB] transition-colors z-10" />
                   <input
-                    type="email" required placeholder="hello@example.com"
-                    value={email} onChange={(e) => setEmail(e.target.value)}
+                    id="email"
+                    name="email"
+                    autoComplete="email"
+                    type="email" 
+                    required 
+                    placeholder="hello@example.com"
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10 transition-all placeholder-slate-400 font-medium"
                   />
                 </div>
@@ -371,12 +432,18 @@ export const Login: React.FC = () => {
 
               {/* Password Field */}
               <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Password</label>
+                <label htmlFor="password" className="text-sm font-bold text-slate-700">Password</label>
                 <div className="relative group">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-[#2563EB] transition-colors z-10" />
                   <input
-                    type="password" required placeholder="••••••••"
-                    value={password} onChange={(e) => setPassword(e.target.value)}
+                    id="password"
+                    name="password"
+                    autoComplete={isLogin ? "current-password" : "new-password"}
+                    type="password" 
+                    required 
+                    placeholder="••••••••"
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)}
                     className="w-full bg-white border-2 border-slate-200 text-slate-900 rounded-2xl py-3.5 pl-12 pr-4 text-[15px] focus:outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-[#2563EB]/10 transition-all placeholder-slate-400 font-medium"
                   />
                 </div>
@@ -385,7 +452,9 @@ export const Login: React.FC = () => {
               {/* Submit Button */}
               <div className="pt-4">
                 <Button
-                  type="submit" fullWidth loading={loading}
+                  type="submit" 
+                  fullWidth 
+                  loading={loading}
                   className={`group relative overflow-hidden rounded-2xl py-4 font-bold text-[16px] text-white border-0 shadow-xl transition-all hover:-translate-y-0.5 ${
                     isCasualMode && !isLogin
                       ? 'bg-gradient-to-r from-[#10B981] to-[#34D399] shadow-[#10B981]/30'
