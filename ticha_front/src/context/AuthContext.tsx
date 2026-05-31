@@ -104,7 +104,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -149,7 +148,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const mode = level === 'Casual Learner' ? 'casual' : 'exam';
-      const access = getAccessLevel(level, mode);
       
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -164,44 +162,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        // Handle specific error cases
+        if (error.message.includes('User already registered')) {
+          alert('This email is already registered. Please log in instead.');
+        }
+        throw error;
+      }
+      
       if (!data.user) throw new Error("No user returned");
 
-      // Create profile in profiles table
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([{
-          id: data.user.id,
-          email: email,
-          name: name,
-          level: level,
-          mode: mode,
-          access: access,
-          streak: 0,
-          points: 0,
-          casual_interest: casualInterest,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }]);
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        throw profileError;
-      }
-
-      const userProfile: UserProfile = {
-        id: data.user.id,
-        email: email,
-        name: name,
-        level: level,
-        mode: mode,
-        access: access,
-        streak: 0,
-        points: 0,
-        casualInterest
-      };
-
-      setUser(userProfile);
+      // ✅ No manual profile fetch – the onAuthStateChange listener will set the user
       return true;
     } catch (err) {
       console.error('Signup Error:', err);
@@ -286,7 +257,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-      const updateLevel = async (newLevel: string) => {
+  const updateLevel = async (newLevel: string) => {
     if (!user) return;
 
     // 1. Update local state for immediate UI feedback
@@ -313,9 +284,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider value={{ 
       user, 
       loading, 
-      token: session?.access_token || null, // ADDED: token
-      session,                              // ADDED: session
-      updateLevel,                          // ADDED: updateLevel function
+      token: session?.access_token || null,
+      session,
+      updateLevel,
       login, 
       signup, 
       logout, 
@@ -325,8 +296,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-
-
 };
 
 export const useAuth = () => {

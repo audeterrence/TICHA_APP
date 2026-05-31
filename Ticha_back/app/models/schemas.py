@@ -62,6 +62,13 @@ class StudyPlanResponse(BaseModel):
     target_date: date
     tasks: Optional[List[DailyTaskResponse]] = []
 
+
+# Add this after the existing StudyPlanResponse class
+class StudyPlanCreate(BaseModel):
+    target_date: Optional[date] = None      # keep optional for backward compatibility
+    subjects: List[str]                     # list of subject names
+    hours_per_day: int = Field(..., ge=1, le=12)  # 1-12 hours
+
 # ==========================================
 # DOMAIN 4: ADAPTIVE EVALUATION
 # ==========================================

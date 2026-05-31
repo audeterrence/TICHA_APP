@@ -8,19 +8,40 @@ export interface Task {
   task_type: 'reading' | 'quiz' | 'mock_exam';
   status: 'pending' | 'completed';
   scheduled_date: string;
+  // Additional fields expected by the frontend (mapped from backend)
+  date?: string;      // display-friendly, e.g., "Today", "Tomorrow"
+  subject?: string;   // extracted from task title
+  duration?: string;  // mocked or derived
+  completed?: boolean; // derived from status
 }
 
 export interface StudyPlan {
   id: string;
   profile_id: string;
   target_date: string;
+  title: string;           // added
+  start_date?: string;     // computed: today
+  end_date?: string;       // same as target_date
   tasks: Task[];
 }
 
 export const getStudyPlans = async (): Promise<StudyPlan[]> => {
   try {
     const response = await api.get('/study-plans/current');
-    return [response.data];
+    // add computed fields to match frontend expectations
+    const plan = response.data;
+    plan.title = plan.title || `Plan until ${plan.target_date}`;
+    plan.start_date = new Date().toISOString().split('T')[0];
+    plan.end_date = plan.target_date;
+    plan.tasks = plan.tasks.map((task: any) => ({
+      ...task,
+      completed: task.status === 'completed',
+      // naive extraction of subject from title (e.g., "Reading: Mathematics - Day 1")
+      subject: task.title.split(':')[1]?.split('-')[0]?.trim() || 'General',
+      duration: '30 min', // default
+      date: getDateLabel(task.scheduled_date)
+    }));
+    return [plan];
   } catch (error: any) {
     if (error.response && error.response.status === 404) {
       return [];
@@ -37,7 +58,15 @@ export const getCurrentPlan = async (): Promise<StudyPlan> => {
 export const getStudyTasks = async (planId?: string): Promise<Task[]> => {
   try {
     const response = await api.get('/study-plans/current');
-    return response.data.tasks || [];
+    const tasks = response.data.tasks || [];
+    // enrich tasks with frontend fields
+    return tasks.map((task: any) => ({
+      ...task,
+      completed: task.status === 'completed',
+      subject: task.title.split(':')[1]?.split('-')[0]?.trim() || 'General',
+      duration: '30 min',
+      date: getDateLabel(task.scheduled_date)
+    }));
   } catch (error: any) {
     if (error.response && error.response.status === 404) {
       return [];
@@ -46,13 +75,48 @@ export const getStudyTasks = async (planId?: string): Promise<Task[]> => {
   }
 };
 
-export const createStudyPlan = async (targetDate?: string): Promise<StudyPlan> => {
-  const response = await api.post('/study-plans', { target_date: targetDate });
-  return response.data;
+// Helper to convert scheduled_date to "Today", "Tomorrow", or formatted date
+function getDateLabel(scheduledDate: string): string {
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+  if (scheduledDate === today) return 'Today';
+  if (scheduledDate === tomorrow) return 'Tomorrow';
+  return new Date(scheduledDate).toLocaleDateString();
+}
+
+// Updated createStudyPlan to accept subjects and hoursPerDay
+export const createStudyPlan = async (
+  subjects: string[],
+  hoursPerDay: number,
+  targetDate?: string
+): Promise<StudyPlan> => {
+  const response = await api.post('/study-plans', {
+    subjects,
+    hours_per_day: hoursPerDay,
+    target_date: targetDate
+  });
+  const plan = response.data;
+  // add computed fields
+  plan.title = plan.title || `Plan until ${plan.target_date}`;
+  plan.start_date = new Date().toISOString().split('T')[0];
+  plan.end_date = plan.target_date;
+  plan.tasks = plan.tasks.map((task: any) => ({
+    ...task,
+    completed: task.status === 'completed',
+    subject: task.title.split(':')[1]?.split('-')[0]?.trim() || 'General',
+    duration: '30 min',
+    date: getDateLabel(task.scheduled_date)
+  }));
+  return plan;
 };
 
-// RENAMED: Changed from completeTask to toggleTaskCompleted
 export const toggleTaskCompleted = async (taskId: string): Promise<{ message: string; task: Task }> => {
   const response = await api.put(`/study-plans/tasks/${taskId}/complete`);
-  return response.data;
+  // toggle status between 'pending' and 'completed'
+  const updatedTask = response.data.task;
+  updatedTask.completed = updatedTask.status === 'completed';
+  updatedTask.subject = updatedTask.title.split(':')[1]?.split('-')[0]?.trim() || 'General';
+  updatedTask.duration = '30 min';
+  updatedTask.date = getDateLabel(updatedTask.scheduled_date);
+  return { message: response.data.message, task: updatedTask };
 };

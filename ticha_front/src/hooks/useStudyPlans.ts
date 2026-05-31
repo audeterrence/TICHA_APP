@@ -1,6 +1,7 @@
+// src/hooks/useStudyPlans.ts
 import { useState, useEffect } from 'react';
 import { getStudyPlans, getStudyTasks, toggleTaskCompleted, createStudyPlan } from '../services/study';
-import type { StudyPlan, StudyTask } from '../services/study';
+import type { StudyPlan, Task as StudyTask } from '../services/study';
 
 export const useStudyPlans = () => {
   const [plans, setPlans] = useState<StudyPlan[]>([]);
@@ -25,17 +26,14 @@ export const useStudyPlans = () => {
   }, []);
 
   const handleToggleTask = async (taskId: string, currentCompleted: boolean) => {
-    // Optimistic UI update
     const previousTasks = [...tasks];
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, completed: !currentCompleted } : t))
+      prev.map((t) =>
+        t.id === taskId ? { ...t, completed: !currentCompleted, status: !currentCompleted ? 'completed' : 'pending' } : t
+      )
     );
-
     try {
-      const updated = await toggleTaskCompleted(taskId, !currentCompleted);
-      if (!updated) {
-        setTasks(previousTasks);
-      }
+      await toggleTaskCompleted(taskId);
     } catch (err) {
       console.error(`Failed to toggle task ${taskId}:`, err);
       setTasks(previousTasks);
