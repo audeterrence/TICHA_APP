@@ -10,7 +10,6 @@ export const useChat = () => {
   const [sending, setSending] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
 
-  // Load chat sessions on startup
   const fetchSessions = async () => {
     setLoading(true);
     try {
@@ -30,7 +29,6 @@ export const useChat = () => {
     fetchSessions();
   }, []);
 
-  // Load messages whenever active session changes
   useEffect(() => {
     if (activeSession) {
       const fetchMessages = async () => {
@@ -48,10 +46,10 @@ export const useChat = () => {
     }
   }, [activeSession]);
 
-  const handleStartSession = async (subject: string, title?: string) => {
+  const handleStartSession = async (subjectId: string, title?: string) => {
     setLoading(true);
     try {
-      const newSession = await createChatSession(subject, title);
+      const newSession = await createChatSession(subjectId, title);
       setSessions((prev) => [newSession, ...prev]);
       setActiveSession(newSession);
       return newSession;
@@ -68,29 +66,26 @@ export const useChat = () => {
 
     const userMsg: ChatMessage = {
       id: `msg_user_${Date.now()}`,
+      session_id: activeSession.id,
       role: 'user',
-      content,
+      content: content.trim(),
     };
 
-    // 1. Add user message to UI immediately (optimistic update)
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
 
     try {
-      // 2. Transmit to API and fetch AI response
-      const response = await sendChatMessage(activeSession.id, content);
-      setMessages((prev) => [...prev, response]);
+      const assistantResponse = await sendChatMessage(activeSession.id, content);
+      setMessages((prev) => [...prev, assistantResponse]);
     } catch (err) {
       console.error('Failed to send message to AI Tutor:', err);
-      // Optional: add error message bubble in chat
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `msg_err_${Date.now()}`,
-          role: 'assistant',
-          content: '⚠️ *Sorry, I am having trouble connecting to the brain. Please ensure FastAPI is running!*',
-        },
-      ]);
+      const errorMsg: ChatMessage = {
+        id: `msg_err_${Date.now()}`,
+        session_id: activeSession.id,
+        role: 'assistant',
+        content: '⚠️ *Sorry, I am having trouble connecting to the tutor service. Please check if the backend is running.*',
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setSending(false);
     }

@@ -17,6 +17,9 @@ export interface UserProfile {
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
+  token: string | null;           
+  session: any | null;             
+  updateLevel: (level: string) => void; 
   login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string, name: string, level: string, casualInterest?: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -33,6 +36,7 @@ const getAccessLevel = (level: string, mode: string): 'full' | 'limited' | 'prev
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [session, setSession] = useState<any | null>(null); 
   const [loading, setLoading] = useState(true);
 
   // Load user session on startup
@@ -41,6 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         if (sessionData.session) {
+          setSession(sessionData.session); 
           const { data: profile, error } = await supabase
             .from('profiles')
             .select('*')
@@ -98,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setLoading(false);
     });
+
 
     return () => subscription.unsubscribe();
   }, []);
@@ -280,11 +286,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
+      const updateLevel = async (newLevel: string) => {
+    if (!user) return;
+
+    // 1. Update local state for immediate UI feedback
+    setUser({ ...user, level: newLevel });
+
+    // 2. Perform the database update to make it permanent
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ level: newLevel })
+        .eq('id', user.id);
+
+      if (error) {
+        console.error('Failed to update level in database:', error);
+        // Optional: Revert local state if database update fails
+        setUser({ ...user, level: user.level }); 
+      }
+    } catch (err) {
+      console.error('Error in updateLevel:', err);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, updateStreak, addPoints }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      token: session?.access_token || null, // ADDED: token
+      session,                              // ADDED: session
+      updateLevel,                          // ADDED: updateLevel function
+      login, 
+      signup, 
+      logout, 
+      updateStreak, 
+      addPoints 
+    }}>
       {children}
     </AuthContext.Provider>
   );
+
+
 };
 
 export const useAuth = () => {

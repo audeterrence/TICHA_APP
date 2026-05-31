@@ -30,8 +30,11 @@ export const SubjectMastery: React.FC = () => {
   const navigate = useNavigate();
 
   const handleStartPractice = (topicName: string) => {
-    navigate('/quiz', { state: { topic: topicName, subject: activeSubject?.name } });
-  };
+  // If no subject is active, we prevent the action
+  if (!activeSubject) return;
+  navigate('/quiz', { state: { topic: topicName, subject: activeSubject.name } });
+};
+
 
   const getMasteryColor = (pct: number) => {
     if (pct >= 80) return 'bg-emerald-500';
@@ -118,18 +121,20 @@ export const SubjectMastery: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-tichaBlue to-tichaPurple flex items-center justify-center text-white shadow-md">
-                    {iconMap[activeSubject.icon] ? React.createElement(iconMap[activeSubject.icon], { className: "w-5.5 h-5.5 shrink-0" }) : <BookOpen className="w-5.5 h-5.5" />}
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-slate-800">{activeSubject.name}</h3>
-                    <p className="text-xs text-slate-400 font-medium">Syllabus breakdown for your prep dashboard</p>
-                  </div>
+  {/* Add ?. to safely access the icon */}
+  {iconMap[activeSubject?.icon] ? React.createElement(iconMap[activeSubject?.icon], { className: "w-5.5 h-5.5 shrink-0" }) : <BookOpen className="w-5.5 h-5.5" />}
+</div>
+<div>
+  <h3 className="text-lg font-black text-slate-800">{activeSubject?.name}</h3>
+  <p className="text-xs text-slate-400 font-medium">Syllabus breakdown for your prep dashboard</p>
+</div>
+
                 </div>
 
                 <div className="flex items-center gap-4 shrink-0 bg-slate-50/50 px-4 py-2 border border-slate-100 rounded-2xl">
-                  <ProgressRing progress={activeSubject.mastery} size={50} strokeWidth={4.5}>
-                    <span className="text-xs font-black text-slate-850">{activeSubject.mastery}%</span>
-                  </ProgressRing>
+<ProgressRing progress={activeSubject?.mastery || 0} size={50} strokeWidth={4.5}>
+  <span className="text-xs font-black text-slate-850">{activeSubject?.mastery}%</span>
+</ProgressRing>
                   <div className="text-left leading-tight">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Overall Subject</span>
                     <h4 className="text-sm font-black text-slate-800">Mastery Level</h4>

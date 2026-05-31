@@ -5,6 +5,8 @@ export interface ChatSession {
   id: string;
   title?: string;
   subject_id: string;
+  subject: string;     
+  date: string;         
   status: string;
   created_at?: string;
 }
