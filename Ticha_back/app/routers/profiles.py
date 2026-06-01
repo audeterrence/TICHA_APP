@@ -26,3 +26,20 @@ def get_my_profile(
         )
         
     return response.data
+
+@router.get("/leaderboard")
+def get_leaderboard(
+    db: Client = Depends(get_db)
+):
+    """
+    Fetches the top leaderboard entries by points.
+    """
+    response = (
+        db.table("profiles")
+        .select("id,name,points,streak,level")
+        .order("points", desc=True)
+        .limit(10)
+        .execute()
+    )
+
+    return response.data or []

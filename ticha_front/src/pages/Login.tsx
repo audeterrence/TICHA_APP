@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, GraduationCap, ArrowRight, BrainCircuit, Atom, BookOpen, Calculator, Sparkles, Heart, Coffee, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -17,9 +17,28 @@ export const Login: React.FC = () => {
   const [casualInterest, setCasualInterest] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [authInProgress, setAuthInProgress] = useState(false);
 
-  const { login, signup } = useAuth();
+  const { loginAndGetOnboardingStatus, signup, session, user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      console.log('[Login] User available, redirecting based on onboarding state', user.id, 'onboarding_completed:', user.onboarding_completed);
+      if (user.mode === 'casual') {
+        navigate('/casual');
+      } else if (user.onboarding_completed) {
+        navigate('/dashboard');
+      } else {
+        navigate('/onboarding');
+      }
+    }
+  }, [user, navigate]);
+
+  useEffect(() => {
+    console.log('[Login] Auth state check - authLoading:', authLoading, 'session exists:', !!session, 'user:', user ? 'exists' : 'null');
+  }, [authLoading, session, user]);
+
 
   // Check if selected level is available now
   const isLevelAvailable = (levelValue: string) => {
@@ -29,40 +48,53 @@ export const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Guard against double submission - more robust
+    if (loading || authInProgress) {
+      console.log("Already submitting, ignoring duplicate");
+      return;
+    }
+
+    setAuthInProgress(true);
     setError('');
-    
+
     // Validation
     if (!email.trim()) {
       setError('Please fill in your email address.');
+      setAuthInProgress(false);
       return;
     }
-    
+
     if (!password.trim()) {
       setError('Please fill in your password.');
+      setAuthInProgress(false);
       return;
     }
-    
+
     if (!isLogin && !name.trim()) {
       setError('Please fill in your name.');
+      setAuthInProgress(false);
       return;
     }
-    
+
     if (!isLogin && isCasualMode && !casualInterest.trim()) {
       setError('Please tell us what you want to learn.');
+      setAuthInProgress(false);
       return;
     }
-    
+
     // Check if selected exam level is available
     if (!isLogin && !isCasualMode && !isLevelAvailable(level)) {
       setError(`${level} is currently in development. Please select GCE O-Level or GCE A-Level for full access, or try Casual Learner mode.`);
+      setAuthInProgress(false);
       return;
     }
 
     setLoading(true);
-    
+
     try {
       let success = false;
-      
+
       // Store user preferences in localStorage BEFORE auth
       localStorage.setItem('ticha_user_level', isCasualMode ? 'casual' : level);
       localStorage.setItem('ticha_user_name', name.trim() || 'Student');
@@ -72,43 +104,51 @@ export const Login: React.FC = () => {
       }
 
       if (isLogin) {
-        console.log("Attempting login with:", email);
-        success = await login(email, password);
+        console.log('[Login] Attempting login with:', email);
+        const result = await loginAndGetOnboardingStatus(email, password);
+        success = result.success;
+        console.log('[Login] Auth result:', result);
+        if (success) {
+          console.log("Authentication successful, navigating...");
+          const userMode = localStorage.getItem('ticha_user_mode');
+          if (userMode === 'casual') {
+            console.log('[Login] Casual user, navigating to /casual');
+            navigate('/casual');
+          } else if (result.onboardingCompleted) {
+            console.log('[Login] Onboarding complete, navigating to /dashboard');
+            navigate('/dashboard');
+          } else {
+            console.log('[Login] Onboarding NOT complete, navigating to /onboarding');
+            navigate('/onboarding');
+          }
+        } else {
+          setError('Login failed. Please check your email and password and try again.');
+        }
       } else {
-        console.log("Attempting signup with:", email, name);
+        console.log('[Login] Attempting signup with:', email, name);
         // Make sure to pass all required parameters to signup
         success = await signup(email, password, name, isCasualMode ? 'Casual Learner' : level, casualInterest);
-      }
 
-      console.log("Auth result:", success);
+        console.log('[Login] Auth result:', success);
 
-      if (success) {
-        console.log("Authentication successful, navigating...");
-        
-        // Redirect based on mode and access
-        if (!isLogin && isCasualMode) {
-          navigate('/casual');
-        } else if (!isLogin && !isCasualMode) {
-          navigate('/dashboard');
-        } else if (isLogin) {
-          // Check if user has completed onboarding
-          const hasCompletedOnboarding = localStorage.getItem('ticha_onboarding_completed');
-          if (hasCompletedOnboarding === 'true') {
-            navigate('/dashboard');
+        if (success) {
+          console.log('Authentication successful, navigating...');
+          if (isCasualMode) {
+            console.log('[Login] Casual signup success, navigating to /casual');
+            navigate('/casual');
           } else {
             navigate('/onboarding');
           }
         } else {
-          navigate('/onboarding');
+          setError('Authentication failed. Please check your credentials and try again.');
         }
-      } else {
-        setError('Authentication failed. Please check your credentials and try again.');
       }
     } catch (err: any) {
       console.error("Form error:", err);
       setError(err.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
+      setAuthInProgress(false);
     }
   };
 

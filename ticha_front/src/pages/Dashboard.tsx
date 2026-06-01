@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Flame, Trophy, Sparkles, Calendar, BookOpen, ArrowRight,
@@ -11,6 +11,7 @@ import { supabase } from '../services/supabase';
 import { Card } from '../components/common/Card';
 import { ProgressRing } from '../components/common/ProgressRing';
 import { Button } from '../components/common/Button';
+import { getStudyTasks, toggleTaskCompleted } from '../services/study';
 
 interface Subject {
   id: string;
@@ -61,31 +62,45 @@ export const Dashboard: React.FC = () => {
   const hasFullAccess = user?.access === 'full';
   const isLimitedAccess = user?.access === 'limited';
 
-  // Fetch all user data from Supabase
+  // Fetch all user data from Supabase & API
   useEffect(() => {
+    console.log('[Dashboard] useEffect fired, userId:', userId);
     if (!userId) {
+      console.log('[Dashboard] No userId, returning early');
       setLoading(false);
       return;
     }
 
     const fetchUserData = async () => {
       setLoading(true);
+      console.log('[Dashboard] Starting fetchUserData');
       try {
         // Fetch subjects
+        console.log('[Dashboard] Fetching subjects for userId:', userId);
         const { data: subjectsData, error: subjectsError } = await supabase
           .from('subjects')
           .select('*')
           .eq('user_id', userId)
           .order('created_at', { ascending: true });
+        console.log('[Dashboard] Subjects result:', { count: subjectsData?.length || 0, error: subjectsError });
 
         if (subjectsError) throw subjectsError;
 
         if (!subjectsData || subjectsData.length === 0) {
-          // No subjects - redirect to onboarding
-          navigate('/onboarding');
-          return;
+          console.log('[Dashboard] No subjects found');
+          // Only redirect to onboarding if onboarding is NOT completed
+          // If onboarding_completed is true but no subjects exist, we have a data inconsistency
+          // but we should NOT loop back to onboarding - let user stay on dashboard
+          if (user?.onboarding_completed) {
+            console.log('[Dashboard] Onboarding completed but no subjects - showing dashboard anyway');
+          } else {
+            console.log('[Dashboard] Onboarding NOT completed - redirecting to onboarding');
+            navigate('/onboarding');
+            return;
+          }
         }
 
+        console.log('[Dashboard] Subjects found:', subjectsData.length);
         setSubjects(subjectsData);
 
         // Fetch or create user progress
@@ -118,43 +133,17 @@ export const Dashboard: React.FC = () => {
           setProgress(newProgress);
         }
 
-        // Fetch today's tasks
-        const today = new Date().toISOString().split('T')[0];
-        const { data: tasksData, error: tasksError } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('user_id', userId)
-          .gte('created_at', today)
-          .order('created_at', { ascending: true });
-
-        if (tasksError) throw tasksError;
-
-        if (tasksData && tasksData.length > 0) {
-          setTasks(tasksData);
-        } else {
-          // Generate initial tasks based on subjects
-          const generatedTasks = subjectsData.map((subject, index) => ({
-            user_id: userId,
-            title: subject.mastery === 0 
-              ? `Start learning ${subject.name} fundamentals`
-              : subject.mastery < 50
-                ? `Review ${subject.name} - ${subject.mastery}% mastered`
-                : `Advanced practice: ${subject.name}`,
-            subject: subject.name,
-            duration: subject.mastery < 30 ? '25 min' : '15 min',
-            completed: false,
-            xp_reward: subject.mastery < 30 ? 20 : 10,
-            created_at: new Date().toISOString()
-          })).slice(0, 4);
-
-          const { data: newTasks, error: insertError } = await supabase
-            .from('tasks')
-            .insert(generatedTasks)
-            .select();
-
-          if (insertError) throw insertError;
-          if (newTasks) setTasks(newTasks);
-        }
+        // Fetch tasks from the active Study Plan via FastAPI backend!
+        console.log('[Dashboard] Fetching current plan study tasks from API');
+        const tasksData = await getStudyTasks();
+        console.log('[Dashboard] API study tasks fetched:', tasksData?.length || 0);
+        
+        // Map backend tasks to expect xp_reward
+        const enrichedTasks = (tasksData || []).map((t: any) => ({
+          ...t,
+          xp_reward: t.task_type === 'quiz' ? 20 : 10
+        }));
+        setTasks(enrichedTasks);
 
         // Update streak
         await updateStreak();
@@ -214,21 +203,17 @@ export const Dashboard: React.FC = () => {
 
     setSyncing(true);
     try {
-      // Update task as completed
-      const { error: taskError } = await supabase
-        .from('tasks')
-        .update({ completed: true })
-        .eq('id', taskId)
-        .eq('user_id', userId);
-
-      if (taskError) throw taskError;
+      // Update task via the FastAPI Backend API
+      console.log('[Dashboard] Marking task completed in API:', taskId);
+      const result = await toggleTaskCompleted(taskId);
+      console.log('[Dashboard] API task complete response:', result);
 
       // Update local state
       setTasks(tasks.map(task =>
         task.id === taskId ? { ...task, completed: true } : task
       ));
 
-      // Add XP to user progress
+      // Add XP to user progress in Supabase
       const newTotalXP = progress.total_xp + xpReward;
       const { error: progressError } = await supabase
         .from('user_progress')
@@ -269,13 +254,16 @@ export const Dashboard: React.FC = () => {
   };
 
   // Redirect casual learners
+  console.log('[Dashboard] Checking redirect conditions:', { mode: user?.mode, isLimitedAccess, hasFullAccess });
   if (user?.mode === 'casual') {
+    console.log('[Dashboard] Redirecting to /casual');
     navigate('/casual');
     return null;
   }
 
   // Show coming soon for limited access
   if (isLimitedAccess) {
+    console.log('[Dashboard] Showing limited access page');
     return (
       <div className="min-h-[80vh] flex items-center justify-center px-6">
         <div className="max-w-md w-full text-center space-y-6">
@@ -327,7 +315,8 @@ export const Dashboard: React.FC = () => {
     );
   }
 
-  if (loading) {
+  // Also wait for user to be loaded before showing dashboard content
+  if (loading || !user) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 text-tichaBlue animate-spin" />
@@ -462,40 +451,51 @@ export const Dashboard: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {subjects.map((subject) => (
-              <div 
-                key={subject.id} 
-                onClick={() => navigate(`/quiz?subject=${subject.id}`)}
-                className="p-4 bg-slate-50/50 border border-slate-100 hover:border-slate-200 rounded-2xl flex flex-col justify-between gap-3.5 transition-all cursor-pointer group"
+            {subjects.map((subject) => {
+              const isMastered = subject.mastery >= 85;
+              return (
+              <div
+                key={subject.id}
+                onClick={isMastered ? undefined : () => navigate(`/quiz?subject=${subject.id}`)}
+                className={`p-4 bg-slate-50/50 border rounded-2xl flex flex-col justify-between gap-3.5 transition-all group ${
+                  isMastered
+                    ? 'border-slate-200 opacity-60 cursor-not-allowed bg-slate-100/30'
+                    : 'border-slate-100 hover:border-slate-200 cursor-pointer'
+                }`}
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">📚</span>
+                    <span className="text-xl">{isMastered ? '✅' : '📚'}</span>
                     <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase bg-slate-100 px-2 py-0.5 rounded-md">
                       {subject.code}
                     </span>
                   </div>
-                  <span className="text-xs font-bold text-tichaBlue group-hover:underline">
+                  <span className={`text-xs font-bold ${isMastered ? 'text-emerald-500' : 'text-tichaBlue'} group-hover:underline`}>
                     {subject.mastery}% Mastery
                   </span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-800 text-sm leading-tight mb-1.5">{subject.name}</h4>
+                  <h4 className={`font-bold text-sm leading-tight mb-1.5 ${isMastered ? 'text-slate-500' : 'text-slate-800'}`}>{subject.name}</h4>
                   <div className="w-full bg-slate-200/60 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className="bg-gradient-to-r from-tichaBlue to-tichaPurple h-full rounded-full transition-all duration-500" 
-                      style={{ width: `${subject.mastery}%` }} 
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isMastered ? 'bg-emerald-400' : 'bg-gradient-to-r from-tichaBlue to-tichaPurple'
+                      }`}
+                      style={{ width: `${subject.mastery}%` }}
                     />
                   </div>
                 </div>
-                <div className="flex justify-between items-center text-[10px] font-medium text-slate-400 border-t border-slate-100/50 pt-2.5">
-                  <span>{subject.topic_count} topics</span>
-                  <span className="text-tichaPurple font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                    Start Quiz <ChevronRight className="w-3 h-3" />
+                <div className="flex justify-between items-center text-[10px] font-medium border-t border-slate-100/50 pt-2.5">
+                  <span className={isMastered ? 'text-emerald-500' : 'text-slate-400'}>{subject.topic_count} topics</span>
+                  <span className={`font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1 ${
+                    isMastered ? 'text-emerald-500' : 'text-tichaPurple'
+                  }`}>
+                    {isMastered ? 'Mastered' : 'Start Quiz'} <ChevronRight className="w-3 h-3" />
                   </span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 

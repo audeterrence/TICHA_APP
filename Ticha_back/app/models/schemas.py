@@ -7,10 +7,13 @@ from uuid import UUID
 # DOMAIN 1: PROFILES
 # ==========================================
 class ProfileBase(BaseModel):
-    full_name: str
+    name: str
+    email: str
     level: str
     mode: str
     casual_interest: Optional[str] = None
+    access: str = 'limited'
+    onboarding_completed: bool = False
 
 class ProfileCreate(ProfileBase):
     pass
@@ -20,6 +23,8 @@ class ProfileResponse(ProfileBase):
     streak: int
     points: int
     created_at: datetime
+    stream: Optional[str] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -37,11 +42,19 @@ class TopicResponse(TopicBase):
 
 class SubjectBase(BaseModel):
     name: str
-    level_target: str
+    code: str
+    mastery: int = 0
+    topic_count: int = 0
+    stream: Optional[str] = None
+    user_id: UUID
 
 class SubjectResponse(SubjectBase):
     id: UUID
+    created_at: datetime
     topics: Optional[List[TopicResponse]] = []
+
+    class Config:
+        from_attributes = True
 
 # ==========================================
 # DOMAIN 3: STUDY PLANS

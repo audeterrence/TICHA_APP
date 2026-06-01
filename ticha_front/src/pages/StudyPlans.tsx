@@ -43,7 +43,7 @@ export const StudyPlans: React.FC = () => {
     if (selectedSubjects.length === 0) return;
 
     setGenerating(true);
-    const success = await generatePlan();
+    const success = await generatePlan(selectedSubjects, hours);
     setGenerating(false);
 
     if (success) {
@@ -125,8 +125,8 @@ export const StudyPlans: React.FC = () => {
                     >
                       <input
                         type="checkbox"
-                        checked={task.completed}
-                        onChange={() => toggleTask(task.id, task.completed)}
+                        checked={!!task.completed}
+                        onChange={() => toggleTask(task.id, !!task.completed)}
                         className="w-4.5 h-4.5 text-tichaBlue border-slate-300 rounded focus:ring-tichaBlue cursor-pointer mt-0.5"
                       />
                       <div className="flex-1 space-y-1 text-left">
@@ -171,8 +171,8 @@ export const StudyPlans: React.FC = () => {
                     >
                       <input
                         type="checkbox"
-                        checked={task.completed}
-                        onChange={() => toggleTask(task.id, task.completed)}
+                        checked={!!task.completed}
+                        onChange={() => toggleTask(task.id, !!task.completed)}
                         className="w-4.5 h-4.5 text-tichaPurple border-slate-300 rounded focus:ring-tichaPurple cursor-pointer mt-0.5"
                       />
                       <div className="flex-1 space-y-1 text-left">

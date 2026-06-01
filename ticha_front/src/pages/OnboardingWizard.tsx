@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabase';
 import { Button } from '../components/common/Button';
 import { 
   ArrowRight, ArrowLeft, BookOpen, Beaker, Palette, CheckCircle2, 
@@ -71,7 +72,7 @@ const iconMap: Record<string, any> = {
 };
 
 export const OnboardingWizard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState<'welcome' | 'stream' | 'subjects'>('welcome');
   const [stream, setStream] = useState<'science' | 'arts' | null>(null);
@@ -90,14 +91,19 @@ export const OnboardingWizard: React.FC = () => {
       setLoading(false);
       return;
     }
-    const completionKey = `ticha_onboarding_complete_${userId}`;
-    const hasCompleted = localStorage.getItem(completionKey) === 'true';
-    if (hasCompleted) {
+    if (user?.mode === 'casual') {
+      console.log('[OnboardingWizard] Casual learner, bypassing onboarding, redirecting to /casual');
+      navigate('/casual');
+      return;
+    }
+    // Check DATABASE value for onboarding_completed, not localStorage
+    if (user?.onboarding_completed) {
+      console.log('[OnboardingWizard] User already completed onboarding, redirecting to dashboard');
       navigate('/dashboard');
     } else {
       setLoading(false);
     }
-  }, [userId, navigate]);
+  }, [userId, user?.onboarding_completed, user?.mode, navigate]);
 
   const handleStreamSelect = (selectedStream: 'science' | 'arts'): void => {
     setStream(selectedStream);
@@ -114,30 +120,77 @@ export const OnboardingWizard: React.FC = () => {
     setError('');
   };
 
-  const handleFinish = (): void => {
+  const handleFinish = async (): Promise<void> => {
+    console.log('[OnboardingWizard] handleFinish called, selectedSubjects:', selectedSubjects.length);
     if (selectedSubjects.length < minSubjects) {
       setError(`Please select at least ${minSubjects} subjects to continue`);
       return;
     }
 
     const fullSubjects: Subject[] = currentSubjects.filter((s: Subject) => selectedSubjects.includes(s.id));
-    const subjectsWithProgress = fullSubjects.map((subject: Subject) => ({
-      id: subject.id,
-      name: subject.name,
-      code: subject.code,
-      mastery: 0,
-      topicCount: subject.topics,
-      stream: stream,
-      icon: subject.icon,
-      color: subject.color
-    }));
+    console.log('[OnboardingWizard] fullSubjects filtered:', fullSubjects.length);
 
     if (userId) {
+      // Save to localStorage
+      const subjectsWithProgress = fullSubjects.map((subject: Subject) => ({
+        id: subject.id,
+        name: subject.name,
+        code: subject.code,
+        mastery: 0,
+        topicCount: subject.topics,
+        stream: stream,
+        icon: subject.icon,
+        color: subject.color
+      }));
       localStorage.setItem(`ticha_user_subjects_${userId}`, JSON.stringify(subjectsWithProgress));
       localStorage.setItem(`ticha_user_stream_${userId}`, stream as string);
       localStorage.setItem(`ticha_onboarding_complete_${userId}`, 'true');
+      console.log('[OnboardingWizard] Saved to localStorage');
+
+      // Save subjects to database
+      try {
+        const subjectsToInsert = fullSubjects.map((subject: Subject) => ({
+          user_id: userId,
+          name: subject.name,
+          code: subject.code,
+          mastery: 0,
+          topic_count: subject.topics,
+          stream: stream
+        }));
+
+        console.log('[OnboardingWizard] Inserting subjects to DB:', subjectsToInsert.length);
+        const { error: insertError } = await supabase
+          .from('subjects')
+          .insert(subjectsToInsert);
+        console.log('[OnboardingWizard] Subject insert result:', { error: insertError });
+
+        if (insertError) {
+          console.error('Error saving subjects:', insertError);
+          // Continue anyway - localStorage has the data
+        }
+
+        // Update user profile with stream AND mark onboarding as complete
+        console.log('[OnboardingWizard] Updating profile with onboarding_completed: true');
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ stream: stream, onboarding_completed: true })
+          .eq('id', userId);
+        console.log('[OnboardingWizard] Profile update result:', { error: profileError });
+
+        if (profileError) {
+          console.error('Error updating profile stream:', profileError);
+        } else {
+          // Refresh AuthContext user state so Dashboard gets fresh data
+          console.log('[OnboardingWizard] Calling refreshUser()');
+          await refreshUser();
+        }
+      } catch (err) {
+        console.error('Error in handleFinish:', err);
+        // Continue anyway
+      }
     }
-    
+
+    console.log('[OnboardingWizard] Navigating to /dashboard');
     navigate('/dashboard');
   };
 
@@ -183,25 +236,34 @@ export const OnboardingWizard: React.FC = () => {
   if (step === 'welcome') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-6">
+        {/* Back button */}
+        <button
+          onClick={() => navigate('/')}
+          className="absolute top-6 left-6 flex items-center gap-2 text-white/60 hover:text-white text-sm font-medium transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Home</span>
+        </button>
+
         <div className="max-w-2xl w-full text-center">
           <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 border border-white/20">
             <div className="w-20 h-20 bg-gradient-to-r from-tichaBlue to-tichaPurple rounded-2xl flex items-center justify-center mx-auto mb-6">
               <GraduationCap className="w-10 h-10 text-white" />
             </div>
-            
+
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-white/80 text-sm mb-4">
               <Sparkles className="w-4 h-4 text-yellow-400" />
               Welcome to Ticha AI
             </div>
-            
+
             <h1 className="text-3xl md:text-4xl font-black text-white mb-3">
               Let's personalise your learning journey
             </h1>
-            
+
             <p className="text-white/60 mb-8">
               Tell us about your academic path so we can create a custom study plan for your success.
             </p>
-            
+
             <button
               onClick={() => setStep('stream')}
               className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-tichaBlue to-tichaPurple rounded-xl font-bold text-white"

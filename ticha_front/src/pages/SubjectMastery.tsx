@@ -146,9 +146,9 @@ export const SubjectMastery: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-4 shrink-0 bg-slate-50/50 px-4 py-2 border border-slate-100 rounded-2xl">
-                  <ProgressRing progress={activeSubject.mastery} size={50} strokeWidth={4.5}>
+                  <ProgressRing progress={activeSubject.mastery ?? 0} size={50} strokeWidth={4.5}>
                     <span className="text-xs font-black text-slate-850">
-                      {activeSubject.mastery}%
+                      {activeSubject.mastery ?? 0}%
                     </span>
                   </ProgressRing>
                   <div className="text-left leading-tight">
