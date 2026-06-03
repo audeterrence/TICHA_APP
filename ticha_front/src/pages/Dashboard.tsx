@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Flame, Trophy, Sparkles, Calendar, BookOpen, ArrowRight,
-  Plus, FileSearch, CheckCircle2, AlertCircle, Clock,
-  Lock, Target, TrendingUp, MessageCircle, Brain, Zap,
-  ChevronRight, Star, Award, Loader2
+  Flame, Trophy, Calendar, BookOpen, ArrowRight,
+  FileSearch, CheckCircle2, AlertCircle, Clock,
+  Lock, Target, MessageCircle,
+  ChevronRight, Loader2, GraduationCap, Beaker, Palette, Zap, TrendingUp
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useStudy } from '../context/StudyContext';
 import { supabase } from '../services/supabase';
 import { Card } from '../components/common/Card';
 import { ProgressRing } from '../components/common/ProgressRing';
 import { Button } from '../components/common/Button';
-import { getStudyTasks, toggleTaskCompleted } from '../services/study';
 
 interface Subject {
   id: string;
@@ -20,17 +20,6 @@ interface Subject {
   mastery: number;
   topic_count: number;
   stream: 'science' | 'arts';
-  user_id: string;
-  created_at: string;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  subject: string;
-  duration: string;
-  completed: boolean;
-  xp_reward: number;
   user_id: string;
   created_at: string;
 }
@@ -46,255 +35,116 @@ interface UserProgress {
   updated_at: string;
 }
 
+const subjectColors: Record<string, { bg: string; bar: string; icon: string }> = {
+  PMATH: { bg: 'bg-blue-50 border-blue-200', bar: 'from-blue-500 to-cyan-500', icon: 'text-blue-600' },
+  PHY: { bg: 'bg-indigo-50 border-indigo-200', bar: 'from-indigo-500 to-blue-500', icon: 'text-indigo-600' },
+  CHEM: { bg: 'bg-emerald-50 border-emerald-200', bar: 'from-emerald-500 to-teal-500', icon: 'text-emerald-600' },
+  BIO: { bg: 'bg-green-50 border-green-200', bar: 'from-green-500 to-emerald-500', icon: 'text-green-600' },
+  GEOL: { bg: 'bg-stone-50 border-stone-200', bar: 'from-stone-500 to-neutral-500', icon: 'text-stone-600' },
+  FMATH: { bg: 'bg-violet-50 border-violet-200', bar: 'from-violet-500 to-purple-500', icon: 'text-violet-600' },
+  CS: { bg: 'bg-slate-50 border-slate-200', bar: 'from-slate-500 to-gray-500', icon: 'text-slate-600' },
+  FSCI: { bg: 'bg-orange-50 border-orange-200', bar: 'from-orange-500 to-red-500', icon: 'text-orange-600' },
+  LIT: { bg: 'bg-amber-50 border-amber-200', bar: 'from-amber-500 to-orange-500', icon: 'text-amber-600' },
+  HIST: { bg: 'bg-yellow-50 border-yellow-200', bar: 'from-yellow-600 to-amber-600', icon: 'text-yellow-600' },
+  FR: { bg: 'bg-rose-50 border-rose-200', bar: 'from-rose-500 to-pink-500', icon: 'text-rose-600' },
+  GEOG: { bg: 'bg-teal-50 border-teal-200', bar: 'from-teal-500 to-cyan-500', icon: 'text-teal-600' },
+  ECO: { bg: 'bg-cyan-50 border-cyan-200', bar: 'from-cyan-500 to-blue-500', icon: 'text-cyan-600' },
+  MATH: { bg: 'bg-sky-50 border-sky-200', bar: 'from-sky-500 to-blue-500', icon: 'text-sky-600' },
+  PHIL: { bg: 'bg-fuchsia-50 border-fuchsia-200', bar: 'from-fuchsia-500 to-purple-500', icon: 'text-fuchsia-600' },
+  ENG: { bg: 'bg-red-50 border-red-200', bar: 'from-red-500 to-rose-500', icon: 'text-red-600' },
+  COM: { bg: 'bg-lime-50 border-lime-200', bar: 'from-lime-500 to-green-500', icon: 'text-lime-600' },
+  RS: { bg: 'bg-purple-50 border-purple-200', bar: 'from-purple-500 to-violet-500', icon: 'text-purple-600' },
+  AMATH: { bg: 'bg-sky-50 border-sky-200', bar: 'from-sky-500 to-indigo-500', icon: 'text-sky-600' },
+  HBIO: { bg: 'bg-emerald-50 border-emerald-200', bar: 'from-emerald-500 to-green-500', icon: 'text-emerald-600' },
+  FN: { bg: 'bg-pink-50 border-pink-200', bar: 'from-pink-500 to-rose-500', icon: 'text-pink-600' },
+};
+
+const defaultColor = { bg: 'bg-slate-50 border-slate-200', bar: 'from-slate-400 to-slate-500', icon: 'text-slate-500' };
+
 export const Dashboard: React.FC = () => {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   
+  // Use shared study context for tasks (syncs with StudyPlans page)
+  const { tasks, toggleTask, loading: tasksLoading } = useStudy();
+  
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
 
   const userId = user?.id;
   const userLevel = user?.level || 'GCE A-Level';
   const userStream = user?.stream || 'science';
+  const userName = user?.name || 'Student';
   const hasFullAccess = user?.access === 'full';
   const isLimitedAccess = user?.access === 'limited';
+  const isExamMode = user?.mode === 'exam';
 
-  // Fetch all user data from Supabase & API
   useEffect(() => {
-    console.log('[Dashboard] useEffect fired, userId:', userId);
-    if (!userId) {
-      console.log('[Dashboard] No userId, returning early');
-      setLoading(false);
-      return;
-    }
+    if (!userId) { setLoading(false); return; }
 
     const fetchUserData = async () => {
       setLoading(true);
-      console.log('[Dashboard] Starting fetchUserData');
       try {
         // Fetch subjects
-        console.log('[Dashboard] Fetching subjects for userId:', userId);
         const { data: subjectsData, error: subjectsError } = await supabase
-          .from('subjects')
-          .select('*')
+          .from('user_subjects')
+          .select('*, subjects!inner(name, code, stream, topic_count)')
           .eq('user_id', userId)
           .order('created_at', { ascending: true });
-        console.log('[Dashboard] Subjects result:', { count: subjectsData?.length || 0, error: subjectsError });
 
         if (subjectsError) throw subjectsError;
-
         if (!subjectsData || subjectsData.length === 0) {
-          console.log('[Dashboard] No subjects found');
-          // Only redirect to onboarding if onboarding is NOT completed
-          // If onboarding_completed is true but no subjects exist, we have a data inconsistency
-          // but we should NOT loop back to onboarding - let user stay on dashboard
-          if (user?.onboarding_completed) {
-            console.log('[Dashboard] Onboarding completed but no subjects - showing dashboard anyway');
-          } else {
-            console.log('[Dashboard] Onboarding NOT completed - redirecting to onboarding');
-            navigate('/onboarding');
-            return;
-          }
+          if (!user?.onboarding_completed) { navigate('/onboarding'); return; }
         }
 
-        console.log('[Dashboard] Subjects found:', subjectsData.length);
-        setSubjects(subjectsData);
+        const mappedSubjects = (subjectsData || []).map((item: any) => ({
+          id: item.subject_id,
+          name: item.subjects?.name || '',
+          code: item.subjects?.code || '',
+          mastery: item.mastery || 0,
+          topic_count: item.subjects?.topic_count || 0,
+          stream: item.subjects?.stream || 'science',
+          user_id: item.user_id,
+          created_at: item.created_at,
+        }));
+        setSubjects(mappedSubjects);
 
-        // Fetch or create user progress
+        // Fetch progress
         const { data: progressData, error: progressError } = await supabase
-          .from('user_progress')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle();
-
+          .from('user_progress').select('*').eq('user_id', userId).maybeSingle();
         if (progressError && progressError.code !== 'PGRST116') throw progressError;
 
         if (progressData) {
           setProgress(progressData);
         } else {
-          // Create initial progress record
           const { data: newProgress, error: createError } = await supabase
-            .from('user_progress')
-            .insert([{
-              user_id: userId,
-              total_xp: 0,
-              current_streak: 0,
-              longest_streak: 0,
-              last_active_date: new Date().toISOString().split('T')[0],
-              average_mastery: 0
-            }])
-            .select()
-            .single();
-
+            .from('user_progress').insert([{ 
+              user_id: userId, total_xp: 0, current_streak: 0, longest_streak: 0, 
+              last_active_date: new Date().toISOString().split('T')[0], average_mastery: 0 
+            }]).select().single();
           if (createError) throw createError;
           setProgress(newProgress);
         }
-
-        // Fetch tasks from the active Study Plan via FastAPI backend!
-        console.log('[Dashboard] Fetching current plan study tasks from API');
-        const tasksData = await getStudyTasks();
-        console.log('[Dashboard] API study tasks fetched:', tasksData?.length || 0);
-        
-        // Map backend tasks to expect xp_reward
-        const enrichedTasks = (tasksData || []).map((t: any) => ({
-          ...t,
-          xp_reward: t.task_type === 'quiz' ? 20 : 10
-        }));
-        setTasks(enrichedTasks);
-
-        // Update streak
-        await updateStreak();
-
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-      } finally {
-        setLoading(false);
+      } catch (error) { 
+        console.error('Error fetching user data:', error); 
+      } finally { 
+        setLoading(false); 
       }
     };
-
     fetchUserData();
-  }, [userId, navigate]);
+  }, [userId, navigate, user?.onboarding_completed]);
 
-  const updateStreak = async () => {
-    if (!userId || !progress) return;
+  if (user?.mode === 'casual') { navigate('/casual'); return null; }
 
-    const today = new Date().toISOString().split('T')[0];
-    const lastActive = progress.last_active_date;
-    
-    if (lastActive === today) return;
-
-    let newStreak = progress.current_streak;
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    if (lastActive === yesterdayStr) {
-      newStreak += 1;
-    } else if (lastActive !== today) {
-      newStreak = 1;
-    }
-
-    const { error } = await supabase
-      .from('user_progress')
-      .update({
-        current_streak: newStreak,
-        longest_streak: Math.max(newStreak, progress.longest_streak),
-        last_active_date: today,
-        updated_at: new Date().toISOString()
-      })
-      .eq('user_id', userId);
-
-    if (!error && progress) {
-      setProgress({
-        ...progress,
-        current_streak: newStreak,
-        longest_streak: Math.max(newStreak, progress.longest_streak),
-        last_active_date: today
-      });
-    }
-  };
-
-  const toggleTask = async (taskId: string, currentCompleted: boolean, xpReward: number) => {
-    if (currentCompleted) return;
-    if (!userId || !progress) return;
-
-    setSyncing(true);
-    try {
-      // Update task via the FastAPI Backend API
-      console.log('[Dashboard] Marking task completed in API:', taskId);
-      const result = await toggleTaskCompleted(taskId);
-      console.log('[Dashboard] API task complete response:', result);
-
-      // Update local state
-      setTasks(tasks.map(task =>
-        task.id === taskId ? { ...task, completed: true } : task
-      ));
-
-      // Add XP to user progress in Supabase
-      const newTotalXP = progress.total_xp + xpReward;
-      const { error: progressError } = await supabase
-        .from('user_progress')
-        .update({ 
-          total_xp: newTotalXP,
-          updated_at: new Date().toISOString()
-        })
-        .eq('user_id', userId);
-
-      if (progressError) throw progressError;
-
-      setProgress({ ...progress, total_xp: newTotalXP });
-
-      // Update subject mastery slightly (simulate progress)
-      const task = tasks.find(t => t.id === taskId);
-      if (task) {
-        const subjectToUpdate = subjects.find(s => s.name === task.subject);
-        if (subjectToUpdate) {
-          const newMastery = Math.min(subjectToUpdate.mastery + 5, 100);
-          const { error: subjectError } = await supabase
-            .from('subjects')
-            .update({ mastery: newMastery })
-            .eq('id', subjectToUpdate.id);
-
-          if (!subjectError) {
-            setSubjects(subjects.map(s =>
-              s.id === subjectToUpdate.id ? { ...s, mastery: newMastery } : s
-            ));
-          }
-        }
-      }
-
-    } catch (error) {
-      console.error('Error completing task:', error);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // Redirect casual learners
-  console.log('[Dashboard] Checking redirect conditions:', { mode: user?.mode, isLimitedAccess, hasFullAccess });
-  if (user?.mode === 'casual') {
-    console.log('[Dashboard] Redirecting to /casual');
-    navigate('/casual');
-    return null;
-  }
-
-  // Show coming soon for limited access
   if (isLimitedAccess) {
-    console.log('[Dashboard] Showing limited access page');
     return (
       <div className="min-h-[80vh] flex items-center justify-center px-6">
         <div className="max-w-md w-full text-center space-y-6">
-          <div className="w-24 h-24 mx-auto bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-full flex items-center justify-center">
-            <Clock className="w-12 h-12 text-amber-500" />
-          </div>
+          <div className="w-24 h-24 mx-auto bg-amber-50 rounded-full flex items-center justify-center"><Clock className="w-12 h-12 text-amber-500" /></div>
           <h1 className="text-3xl font-black text-slate-900">Coming Soon</h1>
-          <p className="text-slate-500">
-            Full support for <strong className="text-slate-700">{userLevel}</strong> is currently in development.
-          </p>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-amber-800">What you can do now:</p>
-                <p className="text-xs text-amber-700 mt-1">
-                  • Explore sample content<br />
-                  • Get notified when your level is ready<br />
-                  • Try Casual Learning mode
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
-            <Button onClick={() => navigate('/casual')} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
-              Try Casual Learning
-            </Button>
-            <Button onClick={() => navigate('/')} variant="primary">
-              Return to Home
-            </Button>
-          </div>
+          <p className="text-slate-500">Full support for <strong>{userLevel}</strong> is in development.</p>
+          <Button onClick={() => navigate('/')}>Return to Home</Button>
         </div>
       </div>
     );
@@ -304,18 +154,14 @@ export const Dashboard: React.FC = () => {
     return (
       <div className="min-h-[80vh] flex items-center justify-center px-6">
         <div className="max-w-md w-full text-center space-y-6">
-          <div className="w-24 h-24 mx-auto bg-red-500/10 rounded-full flex items-center justify-center">
-            <Lock className="w-12 h-12 text-red-500" />
-          </div>
+          <div className="w-24 h-24 mx-auto bg-red-50 rounded-full flex items-center justify-center"><Lock className="w-12 h-12 text-red-500" /></div>
           <h1 className="text-3xl font-black text-slate-900">Access Restricted</h1>
-          <p className="text-slate-500">Please contact support if you believe this is an error.</p>
           <Button onClick={() => navigate('/')}>Return to Home</Button>
         </div>
       </div>
     );
   }
 
-  // Also wait for user to be loaded before showing dashboard content
   if (loading || !user) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
@@ -325,62 +171,67 @@ export const Dashboard: React.FC = () => {
     );
   }
 
-  const averageMastery = subjects.length > 0 
-    ? Math.round(subjects.reduce((acc, s) => acc + s.mastery, 0) / subjects.length)
-    : 0;
-  
+  const averageMastery = subjects.length > 0 ? Math.round(subjects.reduce((acc, s) => acc + s.mastery, 0) / subjects.length) : 0;
   const todayTasks = tasks.filter(t => !t.completed).slice(0, 3);
   const completedTasks = tasks.filter(t => t.completed).length;
   const totalXP = progress?.total_xp || 0;
   const currentStreak = progress?.current_streak || 0;
   const streamDisplay = userStream === 'science' ? 'Science' : 'Arts';
+  const StreamIcon = userStream === 'science' ? Beaker : Palette;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
   return (
     <div className="space-y-6 font-sans pb-8">
       
       {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-8 rounded-3xl text-white relative overflow-hidden shadow-xl border border-slate-700">
-        <div className="absolute top-0 right-0 w-[40%] h-full bg-tichaBlue/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-violet-950 p-8 rounded-3xl text-white relative overflow-hidden shadow-xl border border-slate-700/50">
+        <div className="absolute top-0 right-0 w-[50%] h-full bg-gradient-to-l from-violet-500/10 to-transparent rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-[30%] h-full bg-gradient-to-r from-blue-500/10 to-transparent rounded-full blur-[100px] pointer-events-none" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Sparkles className="w-4 h-4 text-tichaBlue" />
-              <span className="text-xs font-bold uppercase tracking-wider">AI-Powered Learning</span>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
-                {userLevel}
-              </span>
-              <span className="text-xs bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-full">
-                {streamDisplay} Stream
+              {isExamMode && (
+                <span className="text-xs font-bold uppercase tracking-wider bg-white/10 text-white/70 px-3 py-1 rounded-full inline-flex items-center gap-1.5 border border-white/5">
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  {userLevel}
+                </span>
+              )}
+              <span className="text-xs font-bold uppercase tracking-wider bg-white/10 text-white/70 px-3 py-1 rounded-full inline-flex items-center gap-1.5 border border-white/5">
+                <StreamIcon className="w-3.5 h-3.5" />
+                {streamDisplay}
               </span>
             </div>
             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-              Welcome back, {user?.name || 'Student'}! 👋
+              {greeting}, {userName} ! :)
             </h2>
-            <p className="text-sm text-slate-400 max-w-lg">
-              You're enrolled in {subjects.length} subjects for {userLevel} ({streamDisplay} stream).
-              {averageMastery === 0 ? " Let's start your first lesson!" : ` You've mastered ${averageMastery}% of your syllabus.`}
+            <p className="text-sm text-slate-300 max-w-lg leading-relaxed">
+              {subjects.length > 0 
+                ? `${subjects.length} subject${subjects.length > 1 ? 's' : ''} enrolled` 
+                : 'No subjects enrolled yet'}
+              {averageMastery > 0 && <span className="text-violet-300 font-semibold"> · {averageMastery}% mastery</span>}
             </p>
           </div>
           
-          <div className="flex flex-wrap items-center gap-3">
-            <Button 
-              onClick={() => navigate('/chat')}
-              className="bg-gradient-to-r from-tichaBlue to-tichaPurple text-white group"
-            >
-              <MessageCircle className="w-4 h-4 mr-2" />
-              <span>Chat with Ticha AI</span>
-              <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition" />
-            </Button>
-          </div>
+          <Button 
+            onClick={() => navigate('/chat')}
+            className="relative bg-gradient-to-r from-violet-600 via-purple-600 to-blue-600 text-white group shadow-lg shadow-violet-500/30 hover:shadow-violet-500/50 hover:scale-[1.02] transition-all duration-300 overflow-hidden"
+          >
+            <span className="absolute inset-0 rounded-lg ring-2 ring-violet-400/50 animate-ping" style={{ animationDuration: '3s' }} />
+            <span className="relative z-10 flex items-center gap-2">
+              <MessageCircle className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <span className="font-semibold tracking-tight">Ask Ticha</span>
+              <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+            </span>
+          </Button>
         </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        {/* Overall Mastery Ring */}
-        <Card className="flex items-center gap-6 p-6">
-          <ProgressRing progress={averageMastery} size={110} strokeWidth={9}>
+        <Card className="flex items-center gap-6 p-6 bg-gradient-to-br from-white to-blue-50/30 border-blue-100">
+          <ProgressRing progress={averageMastery} size={110} strokeWidth={9} color="from-blue-500 to-violet-500">
             <div className="text-center">
               <span className="text-2xl font-black text-slate-900 leading-none">{averageMastery}%</span>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">Mastery</p>
@@ -388,166 +239,150 @@ export const Dashboard: React.FC = () => {
           </ProgressRing>
           <div className="space-y-1">
             <h3 className="font-bold text-slate-800 text-base">Overall Progress</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Across your {subjects.length} {userLevel} subjects
-            </p>
+            <p className="text-xs text-slate-400 leading-relaxed">Across {subjects.length} subject{subjects.length !== 1 ? 's' : ''}</p>
+            <div className="flex items-center gap-1 text-xs text-blue-600 font-semibold mt-1">
+              <TrendingUp className="w-3 h-3" />
+              <span>{averageMastery > 0 ? 'Keep going!' : 'Start learning'}</span>
+            </div>
           </div>
         </Card>
 
-        {/* XP Points Card */}
-        <Card className="p-6 relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-start justify-between">
+        <Card className="p-6 relative overflow-hidden flex flex-col justify-between bg-gradient-to-br from-white to-yellow-50/30 border-yellow-100">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-yellow-400/5 rounded-full blur-2xl" />
+          <div className="flex items-start justify-between relative z-10">
             <div className="space-y-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total XP</span>
-              <h3 className="text-2xl font-black text-slate-900">{totalXP} XP</h3>
+              <h3 className="text-2xl font-black text-slate-900">{totalXP.toLocaleString()}</h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center text-yellow-500 shadow-sm border border-yellow-100">
+            <div className="w-11 h-11 rounded-xl bg-yellow-400/20 flex items-center justify-center text-yellow-600 shadow-sm border border-yellow-200">
               <Trophy className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4 border-t border-slate-100 pt-3 flex items-center justify-between text-xs text-slate-400">
-            <span>Complete tasks to earn more XP</span>
-            <span className="text-tichaBlue font-semibold">+10 XP per task</span>
+          <div className="mt-4 border-t border-yellow-100 pt-3 flex items-center justify-between text-xs text-slate-400">
+            <span>Earn XP by completing tasks</span>
+            <span className="text-yellow-600 font-bold">+10/task</span>
           </div>
         </Card>
 
-        {/* Streak Card */}
-        <Card className="p-6 relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-start justify-between">
+        <Card className="p-6 relative overflow-hidden flex flex-col justify-between bg-gradient-to-br from-white to-orange-50/30 border-orange-100">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-orange-400/5 rounded-full blur-2xl" />
+          <div className="flex items-start justify-between relative z-10">
             <div className="space-y-1">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Study Streak</span>
               <h3 className="text-2xl font-black text-slate-900">{currentStreak} {currentStreak === 1 ? 'Day' : 'Days'}</h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 shadow-sm border border-orange-100">
+            <div className="w-11 h-11 rounded-xl bg-orange-400/20 flex items-center justify-center text-orange-500 shadow-sm border border-orange-200">
               <Flame className="w-5 h-5 fill-current" />
             </div>
           </div>
-          <div className="mt-4 border-t border-slate-100 pt-3 flex items-center justify-between text-xs text-slate-400">
-            <span>Study daily to grow your streak!</span>
-            <span className="text-orange-600 font-bold">🔥 {currentStreak} Day{currentStreak !== 1 ? 's' : ''}</span>
+          <div className="mt-4 border-t border-orange-100 pt-3 flex items-center justify-between text-xs text-slate-400">
+            <span>Longest: {progress?.longest_streak || 0} days</span>
+            <span className="text-orange-500 font-bold">{currentStreak}d</span>
           </div>
         </Card>
       </div>
 
-      {/* Subjects & Tasks Grid */}
+      {/* Subjects & Tasks */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Your Subjects Section */}
         <Card className="lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-tichaBlue" />
+              <BookOpen className="w-5 h-5 text-blue-600" />
               <h3 className="font-extrabold text-slate-800 text-lg">Your Subjects</h3>
             </div>
-            <Button 
-              onClick={() => navigate('/mastery')}
-              variant="ghost" 
-              size="sm" 
-              className="text-tichaBlue font-bold"
-            >
-              <span>View All</span>
-              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            <Button onClick={() => navigate('/mastery')} variant="ghost" size="sm" className="text-blue-600 font-bold">
+              View All <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {subjects.map((subject) => {
-              const isMastered = subject.mastery >= 85;
-              return (
-              <div
-                key={subject.id}
-                onClick={isMastered ? undefined : () => navigate(`/quiz?subject=${subject.id}`)}
-                className={`p-4 bg-slate-50/50 border rounded-2xl flex flex-col justify-between gap-3.5 transition-all group ${
-                  isMastered
-                    ? 'border-slate-200 opacity-60 cursor-not-allowed bg-slate-100/30'
-                    : 'border-slate-100 hover:border-slate-200 cursor-pointer'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{isMastered ? '✅' : '📚'}</span>
-                    <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase bg-slate-100 px-2 py-0.5 rounded-md">
+          {subjects.length === 0 ? (
+            <div className="text-center py-10 space-y-3">
+              <BookOpen className="w-10 h-10 text-slate-300 mx-auto" />
+              <p className="text-sm font-medium text-slate-600">No subjects yet</p>
+              <p className="text-xs text-slate-400">Complete onboarding to select your subjects.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {subjects.map((subject) => {
+                const colors = subjectColors[subject.code] || defaultColor;
+                const isMastered = subject.mastery >= 85;
+                return (
+                <div
+                  key={subject.id}
+                  onClick={isMastered ? undefined : () => navigate(`/quiz?subject=${subject.id}`)}
+                  className={`p-4 border rounded-2xl flex flex-col justify-between gap-3.5 transition-all group cursor-pointer hover:shadow-md ${colors.bg} ${isMastered ? 'opacity-60 cursor-default' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md bg-white/60 ${colors.icon}`}>
                       {subject.code}
                     </span>
+                    <span className={`text-xs font-bold ${isMastered ? 'text-emerald-600' : colors.icon}`}>
+                      {subject.mastery}%
+                    </span>
                   </div>
-                  <span className={`text-xs font-bold ${isMastered ? 'text-emerald-500' : 'text-tichaBlue'} group-hover:underline`}>
-                    {subject.mastery}% Mastery
-                  </span>
-                </div>
-                <div>
-                  <h4 className={`font-bold text-sm leading-tight mb-1.5 ${isMastered ? 'text-slate-500' : 'text-slate-800'}`}>{subject.name}</h4>
-                  <div className="w-full bg-slate-200/60 h-2 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        isMastered ? 'bg-emerald-400' : 'bg-gradient-to-r from-tichaBlue to-tichaPurple'
-                      }`}
-                      style={{ width: `${subject.mastery}%` }}
-                    />
+                  <div>
+                    <h4 className="font-bold text-sm leading-tight mb-1.5 text-slate-800">{subject.name}</h4>
+                    <div className="w-full bg-white/60 h-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${colors.bar}`}
+                        style={{ width: `${subject.mastery}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] font-medium border-t border-white/40 pt-2.5">
+                    <span className="text-slate-500">{subject.topic_count} topics</span>
+                    <span className={`font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1 ${isMastered ? 'text-emerald-600' : colors.icon}`}>
+                      {isMastered ? 'Mastered' : 'Practice'} <ChevronRight className="w-3 h-3" />
+                    </span>
                   </div>
                 </div>
-                <div className="flex justify-between items-center text-[10px] font-medium border-t border-slate-100/50 pt-2.5">
-                  <span className={isMastered ? 'text-emerald-500' : 'text-slate-400'}>{subject.topic_count} topics</span>
-                  <span className={`font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1 ${
-                    isMastered ? 'text-emerald-500' : 'text-tichaPurple'
-                  }`}>
-                    {isMastered ? 'Mastered' : 'Start Quiz'} <ChevronRight className="w-3 h-3" />
-                  </span>
-                </div>
-              </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
 
-        {/* Today's Tasks */}
-        <Card className="space-y-5 flex flex-col justify-between">
+        {/* Today - uses shared tasks from StudyContext */}
+        <Card className="space-y-5 flex flex-col justify-between bg-gradient-to-b from-white to-violet-50/20">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-tichaPurple" />
-                <h3 className="font-extrabold text-slate-800 text-lg">Today's Tasks</h3>
+                <Calendar className="w-5 h-5 text-violet-600" />
+                <h3 className="font-extrabold text-slate-800 text-lg">Today</h3>
               </div>
-              {syncing && <Loader2 className="w-4 h-4 text-tichaBlue animate-spin" />}
+              {tasksLoading && <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />}
             </div>
 
             {todayTasks.length === 0 ? (
               <div className="text-center py-10 space-y-3">
-                <div className="w-16 h-16 mx-auto bg-emerald-50 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                </div>
-                <p className="text-sm font-medium text-slate-700">All caught up! 🎉</p>
-                <p className="text-xs text-slate-400">Great work today. Check back tomorrow for new tasks.</p>
-                <Button size="sm" onClick={() => navigate('/quiz')} className="mt-2">
-                  Take a Practice Quiz
+                <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                <p className="text-sm font-medium text-slate-700">Nothing scheduled</p>
+                <p className="text-xs text-slate-400">Create a study plan to get daily tasks.</p>
+                <Button size="sm" onClick={() => navigate('/plans')} className="mt-2 bg-violet-600 hover:bg-violet-700 text-white">
+                  Create Study Plan
                 </Button>
               </div>
             ) : (
               <div className="space-y-3">
                 {todayTasks.map((task) => (
-                  <div 
-                    key={task.id} 
-                    className="p-3.5 border rounded-2xl flex items-start gap-3.5 transition-all bg-white border-slate-100 hover:border-slate-200/80"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={task.completed}
-                      onChange={() => toggleTask(task.id, task.completed, task.xp_reward)}
-                      disabled={syncing}
-                      className="w-4.5 h-4.5 text-tichaPurple border-slate-300 rounded focus:ring-tichaPurple cursor-pointer mt-0.5 disabled:opacity-50"
+                  <div key={task.id} className="p-3.5 border border-slate-200 rounded-2xl flex items-start gap-3.5 transition-all bg-white hover:border-violet-200 hover:shadow-sm">
+                    <input 
+                      type="checkbox" 
+                      checked={task.completed} 
+                      onChange={() => toggleTask(task.id, task.completed)} 
+                      disabled={tasksLoading}
+                      className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500 cursor-pointer mt-0.5 disabled:opacity-50" 
                     />
                     <div className="flex-1 space-y-1">
-                      <p className="text-xs font-bold leading-tight text-slate-700">
-                        {task.title}
-                      </p>
+                      <p className="text-xs font-bold leading-tight text-slate-700">{task.title}</p>
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-[10px] font-bold tracking-wide uppercase text-slate-400">
-                          <span className="text-tichaBlue">{task.subject}</span>
-                          <span>•</span>
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-slate-400">
+                          <span className="text-violet-600">{task.subject}</span>
+                          <span>·</span>
                           <span>{task.duration}</span>
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
-                          +{task.xp_reward} XP
-                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">+{task.xp_reward || 10} XP</span>
                       </div>
                     </div>
                   </div>
@@ -556,80 +391,49 @@ export const Dashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Progress summary */}
           {tasks.length > 0 && (
             <div className="mt-4 pt-3 border-t border-slate-100">
               <div className="flex justify-between text-xs text-slate-500 mb-2">
-                <span>Today's Progress</span>
-                <span>{completedTasks} / {tasks.length} tasks</span>
+                <span>Progress</span>
+                <span>{completedTasks} of {tasks.length} done</span>
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div 
-                  className="bg-gradient-to-r from-tichaBlue to-tichaPurple h-full rounded-full transition-all duration-500" 
-                  style={{ width: `${(completedTasks / tasks.length) * 100}%` }} 
-                />
+                <div className="bg-gradient-to-r from-violet-500 to-blue-500 h-full rounded-full transition-all duration-500" 
+                  style={{ width: `${tasks.length > 0 ? (completedTasks / tasks.length) * 100 : 0}%` }} />
               </div>
             </div>
           )}
 
-          <Button 
-            onClick={() => navigate('/plans')}
-            variant="secondary" 
-            className="w-full mt-2"
-          >
-            <span>View Full Study Plan</span>
-            <Calendar className="w-4 h-4 ml-2" />
+          <Button onClick={() => navigate('/plans')} variant="secondary" className="w-full mt-2 border-violet-200 text-violet-700 hover:bg-violet-50">
+            Study Plans <Calendar className="w-4 h-4 ml-2" />
           </Button>
         </Card>
       </div>
 
-      {/* Quick Action Section */}
+      {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button 
-          onClick={() => navigate('/chat')}
-          className="group p-4 bg-gradient-to-r from-tichaBlue/10 to-blue-500/10 rounded-2xl border border-tichaBlue/20 hover:shadow-md transition-all text-left"
-        >
+        <button onClick={() => navigate('/chat')}
+          className="group p-5 bg-gradient-to-br from-violet-50 to-blue-50 rounded-2xl border border-violet-200 hover:border-violet-400 hover:shadow-md transition-all text-left">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-tichaBlue/20 flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-tichaBlue" />
-            </div>
-            <div>
-              <p className="font-bold text-slate-800 text-sm">Ask Ticha AI</p>
-              <p className="text-xs text-slate-500">Get instant help with any topic</p>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-400 ml-auto group-hover:translate-x-1 transition" />
+            <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center"><MessageCircle className="w-5 h-5 text-violet-600" /></div>
+            <div><p className="font-bold text-slate-800 text-sm">Ask Ticha</p><p className="text-xs text-slate-500">Get help with any topic</p></div>
+            <ArrowRight className="w-4 h-4 text-violet-400 ml-auto group-hover:translate-x-1 transition" />
           </div>
         </button>
-
-        <button 
-          onClick={() => navigate('/quiz')}
-          className="group p-4 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 rounded-2xl border border-emerald-500/20 hover:shadow-md transition-all text-left"
-        >
+        <button onClick={() => navigate('/quiz')}
+          className="group p-5 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200 hover:border-emerald-400 hover:shadow-md transition-all text-left">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <Target className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div>
-              <p className="font-bold text-slate-800 text-sm">Practice Quiz</p>
-              <p className="text-xs text-slate-500">Test your knowledge</p>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-400 ml-auto group-hover:translate-x-1 transition" />
+            <div className="w-11 h-11 rounded-xl bg-emerald-500/20 flex items-center justify-center"><Target className="w-5 h-5 text-emerald-600" /></div>
+            <div><p className="font-bold text-slate-800 text-sm">Practice Quiz</p><p className="text-xs text-slate-500">Test your knowledge</p></div>
+            <ArrowRight className="w-4 h-4 text-emerald-400 ml-auto group-hover:translate-x-1 transition" />
           </div>
         </button>
-
-        <button 
-          onClick={() => navigate('/exam')}
-          className="group p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-2xl border border-purple-500/20 hover:shadow-md transition-all text-left"
-        >
+        <button onClick={() => navigate('/exam')}
+          className="group p-5 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200 hover:border-amber-400 hover:shadow-md transition-all text-left">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-              <FileSearch className="w-5 h-5 text-purple-600" />
-            </div>
-            <div>
-              <p className="font-bold text-slate-800 text-sm">Exam Papers</p>
-              <p className="text-xs text-slate-500">Practice past questions</p>
-            </div>
-            <ArrowRight className="w-4 h-4 text-slate-400 ml-auto group-hover:translate-x-1 transition" />
+            <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center"><FileSearch className="w-5 h-5 text-amber-600" /></div>
+            <div><p className="font-bold text-slate-800 text-sm">Exam Papers</p><p className="text-xs text-slate-500">Practice past questions</p></div>
+            <ArrowRight className="w-4 h-4 text-amber-400 ml-auto group-hover:translate-x-1 transition" />
           </div>
         </button>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getChatSessions, createChatSession, getChatMessages, sendChatMessage } from '../services/chat';
+import { api } from '../services/api';
 import type { ChatSession, ChatMessage } from '../services/chat';
 
 export const useChat = () => {
@@ -83,11 +84,26 @@ export const useChat = () => {
         id: `msg_err_${Date.now()}`,
         session_id: activeSession.id,
         role: 'assistant',
-        content: '⚠️ *Sorry, I am having trouble connecting to the tutor service. Please check if the backend is running.*',
+        content: 'Sorry, I am having trouble connecting. Please make sure the backend is running.',
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    // Remove from local state immediately
+    setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+    if (activeSession?.id === sessionId) {
+      setActiveSession(null);
+      setMessages([]);
+    }
+    // Delete from backend
+    try {
+      await api.delete(`/chat/sessions/${sessionId}`);
+    } catch (err) {
+      console.error('Failed to delete session:', err);
     }
   };
 
@@ -101,6 +117,7 @@ export const useChat = () => {
     messagesLoading,
     startSession: handleStartSession,
     sendMessage: handleSendMessage,
+    deleteSession: handleDeleteSession,
     refreshSessions: fetchSessions,
   };
 };

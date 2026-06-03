@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, GraduationCap, ArrowRight, BrainCircuit, Atom, BookOpen, Calculator, Sparkles, Heart, Coffee, AlertCircle } from 'lucide-react';
+import {
+  Mail, Lock, User, GraduationCap, ArrowRight, BrainCircuit, Atom,
+  BookOpen, Calculator, Sparkles, Heart, Coffee, AlertCircle
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
-
-// Import your actual logo
 import tichaLogo from '../assets/ticha-logo.jpg';
 
 export const Login: React.FC = () => {
@@ -15,139 +16,105 @@ export const Login: React.FC = () => {
   const [name, setName] = useState('');
   const [level, setLevel] = useState('GCE A-Level');
   const [casualInterest, setCasualInterest] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState('');
   const [authInProgress, setAuthInProgress] = useState(false);
+  const [pageReady, setPageReady] = useState(false);
 
-  const { loginAndGetOnboardingStatus, signup, session, user, loading: authLoading } = useAuth();
+  const {
+    login,
+    signup,
+    user,
+    loading: authLoading,
+    profileLoaded
+  } = useAuth();
+
   const navigate = useNavigate();
+  const redirectHandled = useRef(false);
 
+  // Wait for AuthContext to be fully loaded and profileLoaded true
   useEffect(() => {
-    if (user) {
-      console.log('[Login] User available, redirecting based on onboarding state', user.id, 'onboarding_completed:', user.onboarding_completed);
-      if (user.mode === 'casual') {
-        navigate('/casual');
-      } else if (user.onboarding_completed) {
-        navigate('/dashboard');
-      } else {
-        navigate('/onboarding');
-      }
+    if (redirectHandled.current) return;
+    if (authLoading) return;
+    if (!profileLoaded) return; // wait for DB profile fetch
+
+    if (!user) {
+      // No user → show login form
+      setPageReady(true);
+      return;
     }
-  }, [user, navigate]);
 
-  useEffect(() => {
-    console.log('[Login] Auth state check - authLoading:', authLoading, 'session exists:', !!session, 'user:', user ? 'exists' : 'null');
-  }, [authLoading, session, user]);
+    console.log('[Login] Profile loaded – onboarding_completed:', user.onboarding_completed, 'stream:', user.stream);
+    redirectHandled.current = true;
 
+    if (!user.onboarding_completed) {
+      console.log('[Login] Incomplete onboarding – redirecting');
+      navigate('/onboarding', { replace: true });
+      return;
+    }
 
-  // Check if selected level is available now
+    // Valid session, redirect
+    if (user.mode === 'casual') {
+      navigate('/casual', { replace: true });
+    } else {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [authLoading, profileLoaded, user, navigate]);
+
   const isLevelAvailable = (levelValue: string) => {
-    const availableLevels = ['GCE O-Level', 'GCE A-Level'];
-    return availableLevels.includes(levelValue);
+    return ['GCE O-Level', 'GCE A-Level'].includes(levelValue);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Guard against double submission - more robust
-    if (loading || authInProgress) {
-      console.log("Already submitting, ignoring duplicate");
-      return;
-    }
-
+    if (formLoading || authInProgress) return;
     setAuthInProgress(true);
     setError('');
 
-    // Validation
-    if (!email.trim()) {
-      setError('Please fill in your email address.');
-      setAuthInProgress(false);
-      return;
-    }
-
-    if (!password.trim()) {
-      setError('Please fill in your password.');
-      setAuthInProgress(false);
-      return;
-    }
-
-    if (!isLogin && !name.trim()) {
-      setError('Please fill in your name.');
-      setAuthInProgress(false);
-      return;
-    }
-
-    if (!isLogin && isCasualMode && !casualInterest.trim()) {
-      setError('Please tell us what you want to learn.');
-      setAuthInProgress(false);
-      return;
-    }
-
-    // Check if selected exam level is available
+    if (!email.trim()) { setError('Please fill in your email address.'); setAuthInProgress(false); return; }
+    if (!password.trim()) { setError('Please fill in your password.'); setAuthInProgress(false); return; }
+    if (!isLogin && !name.trim()) { setError('Please fill in your name.'); setAuthInProgress(false); return; }
+    if (!isLogin && isCasualMode && !casualInterest.trim()) { setError('Please tell us what you want to learn.'); setAuthInProgress(false); return; }
     if (!isLogin && !isCasualMode && !isLevelAvailable(level)) {
-      setError(`${level} is currently in development. Please select GCE O-Level or GCE A-Level for full access, or try Casual Learner mode.`);
+      setError(`${level} is currently in development. Please select GCE O-Level or GCE A-Level, or try Casual Learner mode.`);
       setAuthInProgress(false);
       return;
     }
 
-    setLoading(true);
-
+    setFormLoading(true);
     try {
-      let success = false;
-
-      // Store user preferences in localStorage BEFORE auth
       localStorage.setItem('ticha_user_level', isCasualMode ? 'casual' : level);
       localStorage.setItem('ticha_user_name', name.trim() || 'Student');
       localStorage.setItem('ticha_user_mode', isCasualMode ? 'casual' : 'exam');
-      if (isCasualMode) {
-        localStorage.setItem('ticha_casual_interest', casualInterest);
-      }
+      if (isCasualMode) localStorage.setItem('ticha_casual_interest', casualInterest);
 
       if (isLogin) {
-        console.log('[Login] Attempting login with:', email);
-        const result = await loginAndGetOnboardingStatus(email, password);
-        success = result.success;
-        console.log('[Login] Auth result:', result);
+        // Use the simplified login function
+        const success = await login(email, password);
         if (success) {
-          console.log("Authentication successful, navigating...");
-          const userMode = localStorage.getItem('ticha_user_mode');
-          if (userMode === 'casual') {
-            console.log('[Login] Casual user, navigating to /casual');
-            navigate('/casual');
-          } else if (result.onboardingCompleted) {
-            console.log('[Login] Onboarding complete, navigating to /dashboard');
-            navigate('/dashboard');
-          } else {
-            console.log('[Login] Onboarding NOT complete, navigating to /onboarding');
-            navigate('/onboarding');
-          }
+          // Reset redirect flag so the useEffect above can handle navigation
+          redirectHandled.current = false;
+          // The useEffect will detect the new user state and redirect appropriately
         } else {
           setError('Login failed. Please check your email and password and try again.');
+          setFormLoading(false);
+          setAuthInProgress(false);
         }
       } else {
-        console.log('[Login] Attempting signup with:', email, name);
-        // Make sure to pass all required parameters to signup
-        success = await signup(email, password, name, isCasualMode ? 'Casual Learner' : level, casualInterest);
-
-        console.log('[Login] Auth result:', success);
-
+        const success = await signup(email, password, name, isCasualMode ? 'Casual Learner' : level, casualInterest);
         if (success) {
-          console.log('Authentication successful, navigating...');
-          if (isCasualMode) {
-            console.log('[Login] Casual signup success, navigating to /casual');
-            navigate('/casual');
-          } else {
-            navigate('/onboarding');
-          }
+          if (isCasualMode) navigate('/casual', { replace: true });
+          else navigate('/onboarding', { replace: true });
         } else {
           setError('Authentication failed. Please check your credentials and try again.');
+          setFormLoading(false);
+          setAuthInProgress(false);
         }
       }
     } catch (err: any) {
-      console.error("Form error:", err);
+      console.error('[Login] Form submit error:', err);
       setError(err.message || 'An unexpected error occurred. Please try again.');
-    } finally {
-      setLoading(false);
+      setFormLoading(false);
       setAuthInProgress(false);
     }
   };
@@ -168,6 +135,14 @@ export const Login: React.FC = () => {
     { value: 'Probatoire', label: 'Probatoire (Francophone) - In Development', status: 'coming-soon' },
     { value: 'BAC', label: 'BAC (Francophone) - In Development', status: 'coming-soon' },
   ];
+
+  if (!pageReady) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="animate-spin w-10 h-10 border-4 border-tichaBlue border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -197,10 +172,8 @@ export const Login: React.FC = () => {
       `}</style>
 
       <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white font-sans">
-        
         {/* LEFT SIDE - BRAND, VECTORS & ANIMATION */}
         <div className="relative w-full lg:w-[45%] xl:w-[50%] bg-[#0B1121] overflow-hidden flex flex-col p-8 lg:p-16 min-h-[35vh] lg:min-h-screen border-r border-slate-800">
-          
           <div 
             className="absolute inset-0 opacity-[0.03] pointer-events-none"
             style={{ backgroundImage: 'radial-gradient(#ffffff 2px, transparent 2px)', backgroundSize: '40px 40px' }}
@@ -494,7 +467,7 @@ export const Login: React.FC = () => {
                 <Button
                   type="submit" 
                   fullWidth 
-                  loading={loading}
+                  loading={formLoading}
                   className={`group relative overflow-hidden rounded-2xl py-4 font-bold text-[16px] text-white border-0 shadow-xl transition-all hover:-translate-y-0.5 ${
                     isCasualMode && !isLogin
                       ? 'bg-gradient-to-r from-[#10B981] to-[#34D399] shadow-[#10B981]/30'

@@ -1,9 +1,12 @@
 # Ticha_back/app/utils/auth.py
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.database import supabase
+from supabase import create_client
+from app.config import settings
 
-# FastAPI dependency to extract the Bearer token from the header
+# Use the ANON KEY for token verification (not the service role key)
+supabase_auth = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+
 security = HTTPBearer()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -14,8 +17,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     token = credentials.credentials
     
     try:
-        # Ask Supabase to verify the token and return the user object
-        response = supabase.auth.get_user(token)
+        # Use the anon client to verify user tokens
+        response = supabase_auth.auth.get_user(token)
         
         if not response.user:
             raise HTTPException(
@@ -24,7 +27,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
                 headers={"WWW-Authenticate": "Bearer"},
             )
             
-        # Return the user's UUID
         return response.user.id
         
     except Exception as e:
