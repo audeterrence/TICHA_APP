@@ -231,7 +231,7 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
         <Card className="flex items-center gap-6 p-6 bg-gradient-to-br from-white to-blue-50/30 border-blue-100">
-          <ProgressRing progress={averageMastery} size={110} strokeWidth={9} color="from-blue-500 to-violet-500">
+          <ProgressRing progress={averageMastery} size={110} strokeWidth={9}>
             <div className="text-center">
               <span className="text-2xl font-black text-slate-900 leading-none">{averageMastery}%</span>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">Mastery</p>
@@ -370,7 +370,7 @@ export const Dashboard: React.FC = () => {
                     <input 
                       type="checkbox" 
                       checked={task.completed} 
-                      onChange={() => toggleTask(task.id, task.completed)} 
+                      onChange={() => toggleTask(task.id, !!task.completed)}
                       disabled={tasksLoading}
                       className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500 cursor-pointer mt-0.5 disabled:opacity-50" 
                     />
