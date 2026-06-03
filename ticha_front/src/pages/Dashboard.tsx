@@ -382,7 +382,7 @@ export const Dashboard: React.FC = () => {
                           <span>·</span>
                           <span>{task.duration}</span>
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">+{task.xp_reward || 10} XP</span>
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">+{(task as any).xp_reward || 10} XP XP</span>
                       </div>
                     </div>
                   </div>

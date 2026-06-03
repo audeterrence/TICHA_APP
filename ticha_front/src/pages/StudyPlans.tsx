@@ -167,7 +167,7 @@ export const StudyPlans: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={!!task.completed}
-                          onChange={() => toggleTask(task.id, !!task.completed, task.xp_reward || 10)}
+                          onChange={() => toggleTask(task.id, !!task.completed, (task as any).xp_reward || 10)}
                           className="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 cursor-pointer mt-0.5"
                         />
                         <div className="flex-1 space-y-1">
@@ -212,7 +212,7 @@ export const StudyPlans: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={!!task.completed}
-                          onChange={() => toggleTask(task.id, !!task.completed, task.xp_reward || 10)}
+                          onChange={() => toggleTask(task.id, !!task.completed, (task as any).xp_reward || 10)}
                           className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500 cursor-pointer mt-0.5"
                         />
                         <div className="flex-1 space-y-1">
