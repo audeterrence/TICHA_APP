@@ -3,7 +3,8 @@ import axios from 'axios';
 import { supabase } from './supabase';
 
 // Point this to your running FastAPI backend URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+//const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://afoot-grip-skipper.ngrok-free.dev/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
